@@ -19,6 +19,12 @@ def test_init_writes_archledger_toml_and_default_storage(tmp_path: Path) -> None
     assert (tmp_path / ".archledger" / "storage.yaml").is_file()
     assert (tmp_path / ".archledger" / "sections").is_dir()
     assert (tmp_path / ".archledger" / "records" / "building_blocks").is_dir()
+    storage_text = (tmp_path / ".archledger" / "storage.yaml").read_text(
+        encoding="utf-8"
+    )
+    assert "requirement: 1" in storage_text
+    assert "strategy_item: 1" in storage_text
+    assert "quality_requirement: 1" in storage_text
 
 
 def test_init_project_name_defaults_to_workspace_basename(tmp_path: Path) -> None:
@@ -26,7 +32,10 @@ def test_init_project_name_defaults_to_workspace_basename(tmp_path: Path) -> Non
 
     assert result.exit_code == 0
     config_text = (tmp_path / "archledger.toml").read_text(encoding="utf-8")
+    assert "config_version = 2" in config_text
     assert f'project_name = "{normalize_project_name(tmp_path.name)}"' in config_text
+    assert "include_superseded = false" in config_text
+    assert "[skill]" in config_text
 
 
 def test_init_project_name_option_overrides_basename(tmp_path: Path) -> None:

@@ -39,6 +39,202 @@ def test_new_black_box_creates_black_box_0001(tmp_path: Path) -> None:
     ).is_file()
 
 
+def test_new_requirement_creates_requirement_0001(tmp_path: Path) -> None:
+    init_project(tmp_path)
+
+    result = runner.invoke(
+        app,
+        ["--root", str(tmp_path), "new", "requirement", "--title", "Render output"],
+    )
+
+    assert result.exit_code == 0
+    assert (
+        tmp_path
+        / ".archledger"
+        / "records"
+        / "requirements"
+        / "requirement_0001.md"
+    ).is_file()
+
+
+def test_new_strategy_item_creates_strategy_item_0001(tmp_path: Path) -> None:
+    init_project(tmp_path)
+
+    result = runner.invoke(
+        app,
+        [
+            "--root",
+            str(tmp_path),
+            "new",
+            "strategy-item",
+            "--title",
+            "Keep records canonical",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert (
+        tmp_path
+        / ".archledger"
+        / "records"
+        / "strategy"
+        / "strategy_item_0001.md"
+    ).is_file()
+
+
+def test_new_quality_requirement_creates_quality_requirement_0001(
+    tmp_path: Path,
+) -> None:
+    init_project(tmp_path)
+
+    result = runner.invoke(
+        app,
+        [
+            "--root",
+            str(tmp_path),
+            "new",
+            "quality-requirement",
+            "--title",
+            "Deterministic builds",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert (
+        tmp_path
+        / ".archledger"
+        / "records"
+        / "quality_requirements"
+        / "quality_requirement_0001.md"
+    ).is_file()
+
+
+def test_new_context_interface_accepts_context_kind_and_partner(tmp_path: Path) -> None:
+    init_project(tmp_path)
+
+    result = runner.invoke(
+        app,
+        [
+            "--root",
+            str(tmp_path),
+            "new",
+            "context-interface",
+            "--title",
+            "GitHub",
+            "--context-kind",
+            "business",
+            "--partner",
+            "GitHub",
+        ],
+    )
+
+    assert result.exit_code == 0
+    created = (
+        tmp_path
+        / ".archledger"
+        / "records"
+        / "contexts"
+        / "context_interface_0001.md"
+    ).read_text(encoding="utf-8")
+    assert 'context_kind: "business"' in created
+    assert 'partner: "GitHub"' in created
+
+
+def test_new_infrastructure_accepts_environment(tmp_path: Path) -> None:
+    init_project(tmp_path)
+
+    result = runner.invoke(
+        app,
+        [
+            "--root",
+            str(tmp_path),
+            "new",
+            "infrastructure",
+            "--title",
+            "Local CLI runtime",
+            "--environment",
+            "development",
+        ],
+    )
+
+    assert result.exit_code == 0
+    created = (
+        tmp_path
+        / ".archledger"
+        / "records"
+        / "deployment"
+        / "infrastructure_0001.md"
+    ).read_text(encoding="utf-8")
+    assert 'environment: "development"' in created
+
+
+def test_new_quality_scenario_accepts_quality_and_environment(tmp_path: Path) -> None:
+    init_project(tmp_path)
+
+    result = runner.invoke(
+        app,
+        [
+            "--root",
+            str(tmp_path),
+            "new",
+            "quality-scenario",
+            "--title",
+            "Deterministic build",
+            "--quality",
+            "reproducibility",
+            "--environment",
+            "ci",
+        ],
+    )
+
+    assert result.exit_code == 0
+    created = (
+        tmp_path
+        / ".archledger"
+        / "records"
+        / "quality_scenarios"
+        / "quality_scenario_0001.md"
+    ).read_text(encoding="utf-8")
+    assert 'quality: "reproducibility"' in created
+    assert 'environment: "ci"' in created
+
+
+def test_seed_arc42_minimal_creates_starter_records(tmp_path: Path) -> None:
+    init_project(tmp_path)
+
+    result = runner.invoke(app, ["--root", str(tmp_path), "seed", "arc42-minimal"])
+
+    assert result.exit_code == 0
+    assert (
+        tmp_path
+        / ".archledger"
+        / "records"
+        / "building_blocks"
+        / "white_box_0001.md"
+    ).is_file()
+    assert (
+        tmp_path
+        / ".archledger"
+        / "records"
+        / "quality_goals"
+        / "quality_goal_0003.md"
+    ).is_file()
+    assert (
+        tmp_path
+        / ".archledger"
+        / "records"
+        / "decisions"
+        / "adr0001.md"
+    ).is_file()
+    assert (
+        tmp_path
+        / ".archledger"
+        / "records"
+        / "glossary"
+        / "glossary_0001.md"
+    ).is_file()
+
+
 def test_new_white_box_creates_white_box_0001(tmp_path: Path) -> None:
     init_project(tmp_path)
 
@@ -163,6 +359,133 @@ def test_missing_parent_check_fails(tmp_path: Path) -> None:
         "Parent reference points to a missing record" in message
         for message in messages
     )
+
+
+def test_check_warns_for_incomplete_content_metadata(tmp_path: Path) -> None:
+    init_project(tmp_path)
+    runner.invoke(
+        app,
+        ["--root", str(tmp_path), "new", "quality-goal", "--title", "Reproducibility"],
+    )
+    runner.invoke(
+        app,
+        ["--root", str(tmp_path), "new", "stakeholder", "--title", "Architect"],
+    )
+    runner.invoke(
+        app,
+        [
+            "--root",
+            str(tmp_path),
+            "new",
+            "context-interface",
+            "--title",
+            "GitHub",
+            "--context-kind",
+            "business",
+        ],
+    )
+    runner.invoke(
+        app,
+        ["--root", str(tmp_path), "new", "runtime", "--title", "CLI execution"],
+    )
+
+    result = runner.invoke(app, ["--root", str(tmp_path), "--json", "check"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    messages = [item["message"] for item in payload["result"]["warnings"]]
+    assert "Quality goal quality_goal_0001 has no scenario." in messages
+    assert "Stakeholder stakeholder_0001 has no expectations." in messages
+    assert "Context interface context_interface_0001 has no partner." in messages
+    assert (
+        "Context interface context_interface_0001 has no inputs, outputs, or channels."
+        in messages
+    )
+    assert "Runtime scenario runtime_0001 has no participants." in messages
+    assert "Runtime scenario runtime_0001 has no trigger." in messages
+
+
+def test_check_warns_for_invalid_risk_levels_and_unmeasurable_quality_scenario(
+    tmp_path: Path,
+) -> None:
+    init_project(tmp_path)
+    runner.invoke(
+        app,
+        [
+            "--root",
+            str(tmp_path),
+            "new",
+            "risk",
+            "--title",
+            "Missing template coverage",
+        ],
+    )
+    runner.invoke(
+        app,
+        [
+            "--root",
+            str(tmp_path),
+            "new",
+            "quality-scenario",
+            "--title",
+            "Fast build",
+            "--quality",
+            "reproducibility",
+        ],
+    )
+    risk_path = (
+        tmp_path / ".archledger" / "records" / "risks" / "risk_0001.md"
+    )
+    risk_path.write_text(
+        risk_path.read_text(encoding="utf-8")
+        .replace("severity: medium", "severity: critical")
+        .replace("probability: medium", "probability: certain"),
+        encoding="utf-8",
+    )
+    quality_path = (
+        tmp_path
+        / ".archledger"
+        / "records"
+        / "quality_scenarios"
+        / "quality_scenario_0001.md"
+    )
+    quality_path.write_text(
+        quality_path.read_text(encoding="utf-8").replace(
+            'response_measure: ""',
+            'response_measure: "fast"',
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(app, ["--root", str(tmp_path), "--json", "check"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    messages = [item["message"] for item in payload["result"]["warnings"]]
+    assert "Risk risk_0001 has unsupported severity: critical" in messages
+    assert "Risk risk_0001 has unsupported probability: certain" in messages
+    assert (
+        "Quality scenario quality_scenario_0001 response_measure should be measurable."
+        in messages
+    )
+
+
+def test_check_strict_fails_on_new_content_warning(tmp_path: Path) -> None:
+    init_project(tmp_path)
+    runner.invoke(
+        app,
+        ["--root", str(tmp_path), "new", "context-interface", "--title", "GitHub"],
+    )
+
+    result = runner.invoke(
+        app,
+        ["--root", str(tmp_path), "--json", "check", "--strict"],
+    )
+
+    assert result.exit_code == 1
+    payload = json.loads(result.stdout)
+    messages = [item["message"] for item in payload["error"]["details"]["warnings"]]
+    assert "Context interface context_interface_0001 has no partner." in messages
 
 
 def test_list_excludes_draft_by_default(tmp_path: Path) -> None:

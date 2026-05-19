@@ -185,6 +185,34 @@ def new_record(
             help="Override the default target section.",
         ),
     ] = None,
+    context_kind: Annotated[
+        str | None,
+        typer.Option(
+            "--context-kind",
+            help="Context classification for context-interface records.",
+        ),
+    ] = None,
+    partner: Annotated[
+        str | None,
+        typer.Option(
+            "--partner",
+            help="Partner or external system for context-interface records.",
+        ),
+    ] = None,
+    environment: Annotated[
+        str | None,
+        typer.Option(
+            "--environment",
+            help="Environment for infrastructure or quality-scenario records.",
+        ),
+    ] = None,
+    quality: Annotated[
+        str | None,
+        typer.Option(
+            "--quality",
+            help="Quality attribute for quality-scenario records.",
+        ),
+    ] = None,
 ) -> None:
     state = _state(ctx)
 
@@ -200,6 +228,10 @@ def new_record(
             parent=parent,
             status=status,
             section=section,
+            context_kind=context_kind,
+            partner=partner,
+            environment=environment,
+            quality=quality,
         )
         return {
             "id": record.id,
@@ -208,6 +240,37 @@ def new_record(
         }
 
     _run_configured_command(state, "new", build_result, _format_new_message)
+
+
+@app.command()
+def seed(
+    ctx: typer.Context,
+    preset: Annotated[str, typer.Argument()],
+) -> None:
+    state = _state(ctx)
+
+    def build_result(
+        repo: ArchitectureRepository,
+        paths: ProjectPaths,
+        config: ProjectConfig,
+    ) -> dict[str, object]:
+        del paths, config
+        if preset != "arc42-minimal":
+            raise ArchledgerError(f"Unsupported seed preset: {preset}")
+        records = _seed_arc42_minimal(repo)
+        return {
+            "preset": preset,
+            "records": [
+                {
+                    "id": record.id,
+                    "type": record.type,
+                    "path": str(record.path),
+                }
+                for record in records
+            ],
+        }
+
+    _run_configured_command(state, "seed", build_result, _format_seed_message)
 
 
 @app.command("list")
@@ -423,6 +486,15 @@ def _format_new_message(payload: dict[str, object]) -> str:
     return f"Created {payload['id']}: {payload['path']}"
 
 
+def _format_seed_message(payload: dict[str, object]) -> str:
+    records = payload.get("records")
+    if not isinstance(records, list):
+        raise RuntimeError("Seed payload was malformed.")
+    return (
+        f"Seeded {payload['preset']} with {len(records)} record(s)."
+    )
+
+
 def _format_list_message(payload: dict[str, object]) -> str:
     records = payload["records"]
     if not isinstance(records, list) or not records:
@@ -562,3 +634,38 @@ def _check_error(result: CheckResult, *, strict: bool) -> ArchledgerError:
             "warnings": [_finding_payload(finding) for finding in result.warnings],
         },
     )
+
+
+def _seed_arc42_minimal(repo: ArchitectureRepository) -> list[object]:
+    created_records = [
+        repo.create_record("white-box", "Overall System", status="proposed"),
+        repo.create_record("quality-goal", "Maintainability", status="proposed"),
+        repo.create_record("quality-goal", "Traceability", status="proposed"),
+        repo.create_record("quality-goal", "Reproducibility", status="proposed"),
+        repo.create_record("stakeholder", "Developer", status="proposed"),
+        repo.create_record("stakeholder", "Architect", status="proposed"),
+        repo.create_record(
+            "constraint",
+            "Markdown as source format",
+            status="proposed",
+        ),
+        repo.create_record(
+            "context-interface",
+            "Source repository",
+            status="proposed",
+            context_kind="technical",
+            partner="Source repository",
+        ),
+        repo.create_record(
+            "adr",
+            "Use Markdown records with YAML front matter",
+            status="proposed",
+        ),
+        repo.create_record(
+            "risk",
+            "Documentation can drift from implementation",
+            status="proposed",
+        ),
+        repo.create_record("glossary-term", "Architecture Record", status="proposed"),
+    ]
+    return created_records

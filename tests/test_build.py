@@ -23,10 +23,18 @@ def test_build_generates_all_arc42_major_sections(tmp_path: Path) -> None:
     assert "# Architecture Constraints" in output
     assert "# Context and Scope" in output
     assert "# Building Block View" in output
+    assert "## Requirements Overview" in output
+    assert "## Quality Goals" in output
+    assert "## Stakeholders" in output
+    assert "## Business Context" in output
+    assert "## Technical Context" in output
+    assert "## Strategy Items" in output
+    assert "## Quality Requirements Overview" in output
+    assert "## Quality Scenarios" in output
     assert "# Glossary" in output
 
 
-def test_build_includes_black_box_under_building_block_view(tmp_path: Path) -> None:
+def test_build_includes_structured_arc42_sections(tmp_path: Path) -> None:
     init_project(tmp_path)
     runner.invoke(
         app,
@@ -39,6 +47,94 @@ def test_build_includes_black_box_under_building_block_view(tmp_path: Path) -> N
             "Overall System",
             "--status",
             "accepted",
+        ],
+    )
+    runner.invoke(
+        app,
+        [
+            "--root",
+            str(tmp_path),
+            "new",
+            "requirement",
+            "--title",
+            "Render architecture document from Markdown records",
+            "--status",
+            "accepted",
+        ],
+    )
+    runner.invoke(
+        app,
+        [
+            "--root",
+            str(tmp_path),
+            "new",
+            "strategy-item",
+            "--title",
+            "Keep records as canonical source",
+            "--status",
+            "accepted",
+        ],
+    )
+    runner.invoke(
+        app,
+        [
+            "--root",
+            str(tmp_path),
+            "new",
+            "quality-requirement",
+            "--title",
+            "Deterministic builds",
+            "--status",
+            "accepted",
+        ],
+    )
+    runner.invoke(
+        app,
+        [
+            "--root",
+            str(tmp_path),
+            "new",
+            "quality-scenario",
+            "--title",
+            "Stable architecture build",
+            "--status",
+            "accepted",
+            "--quality",
+            "reproducibility",
+        ],
+    )
+    runner.invoke(
+        app,
+        [
+            "--root",
+            str(tmp_path),
+            "new",
+            "context-interface",
+            "--title",
+            "Business partner",
+            "--status",
+            "accepted",
+            "--context-kind",
+            "business",
+            "--partner",
+            "Business partner",
+        ],
+    )
+    runner.invoke(
+        app,
+        [
+            "--root",
+            str(tmp_path),
+            "new",
+            "context-interface",
+            "--title",
+            "Technical integration",
+            "--status",
+            "accepted",
+            "--context-kind",
+            "technical",
+            "--partner",
+            "Technical integration",
         ],
     )
     runner.invoke(
@@ -63,8 +159,13 @@ def test_build_includes_black_box_under_building_block_view(tmp_path: Path) -> N
     output = (tmp_path / ".archledger" / "build" / "architecture.md").read_text(
         encoding="utf-8"
     )
-    assert "# Building Block View" in output
-    assert "CLI" in output
+    assert "## Whitebox Overall System" in output
+    assert "### Level 1" in output
+    assert "#### CLI" in output
+    assert "## Strategy Items" in output
+    assert "## Quality Requirements Overview" in output
+    assert "## Business Context" in output
+    assert "## Technical Context" in output
 
 
 def test_build_includes_adr_under_architecture_decisions(tmp_path: Path) -> None:
@@ -91,6 +192,35 @@ def test_build_includes_adr_under_architecture_decisions(tmp_path: Path) -> None
     )
     assert "# Architecture Decisions" in output
     assert "Use Markdown records" in output
+    assert "**Status:** accepted" in output
+    assert "**Deciders:**" in output
+
+
+def test_build_renders_structured_risk_overview(tmp_path: Path) -> None:
+    init_project(tmp_path)
+    runner.invoke(
+        app,
+        [
+            "--root",
+            str(tmp_path),
+            "new",
+            "risk",
+            "--title",
+            "Missing template coverage",
+            "--status",
+            "accepted",
+        ],
+    )
+
+    result = runner.invoke(app, ["--root", str(tmp_path), "build"])
+
+    assert result.exit_code == 0
+    output = (tmp_path / ".archledger" / "build" / "architecture.md").read_text(
+        encoding="utf-8"
+    )
+    assert "# Risks and Technical Debt" in output
+    assert "## Risk Overview" in output
+    assert "| Title | Severity | Probability | Mitigation | Notes |" in output
 
 
 def test_build_is_deterministic(tmp_path: Path) -> None:

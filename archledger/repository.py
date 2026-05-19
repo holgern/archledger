@@ -40,6 +40,11 @@ from archledger.storage.meta import (
 from archledger.storage.paths import ProjectPaths
 from archledger.storage.project_config import ProjectConfig
 
+ALLOWED_CONSTRAINT_CATEGORIES = frozenset(
+    {"technical", "organizational", "regulatory", "convention"}
+)
+ALLOWED_RISK_LEVELS = frozenset({"low", "medium", "high"})
+
 
 @dataclass(frozen=True, slots=True)
 class InitResult:
@@ -257,6 +262,8 @@ class ArchitectureRepository:
             warning_message = self._placeholder_warning(record)
             if warning_message is not None:
                 findings_warnings.append(CheckFinding("warning", warning_message, path))
+            for warning_message in self._content_warnings(record):
+                findings_warnings.append(CheckFinding("warning", warning_message, path))
 
         seen_ids: dict[str, Path] = {}
         for record in loaded_records:
@@ -374,7 +381,12 @@ class ArchitectureRepository:
             "parent": "null" if parent in (None, "") else parent,
             "level": kwargs.get("level", 1),
         }
-        if kind == "stakeholder":
+        if kind == "requirement":
+            context["source"] = ""
+            context["priority"] = "must"
+            context["stakeholders"] = []
+            context["quality_goals"] = []
+        elif kind == "stakeholder":
             context["contact"] = ""
             context["expectations"] = []
         elif kind == "quality_goal":
@@ -384,11 +396,15 @@ class ArchitectureRepository:
             context["category"] = "technical"
             context["impact"] = ""
         elif kind == "context_interface":
-            context["context_kind"] = "technical"
-            context["partner"] = ""
+            context["context_kind"] = kwargs.get("context_kind", "technical")
+            context["partner"] = kwargs.get("partner", "")
             context["inputs"] = []
             context["outputs"] = []
             context["channels"] = []
+        elif kind == "strategy_item":
+            context["drivers"] = []
+            context["constraints"] = []
+            context["related_adrs"] = []
         elif kind == "white_box":
             context["diagram"] = None
             context["quality_characteristics"] = []
@@ -408,6 +424,7 @@ class ArchitectureRepository:
             context["trigger"] = ""
             context["result"] = ""
         elif kind == "infrastructure":
+            context["environment"] = kwargs.get("environment", "development")
             context["maps_building_blocks"] = []
         elif kind == "concept":
             context["applies_to"] = []
@@ -417,11 +434,16 @@ class ArchitectureRepository:
             context["supersedes"] = []
             context["related"] = []
             context["tags"] = []
+        elif kind == "quality_requirement":
+            context["category"] = "reliability"
+            context["source"] = ""
+            context["measure"] = ""
+            context["scenarios"] = []
         elif kind == "quality_scenario":
-            context["quality"] = ""
+            context["quality"] = kwargs.get("quality", "")
             context["source"] = ""
             context["stimulus"] = ""
-            context["environment"] = "normal_development"
+            context["environment"] = kwargs.get("environment", "normal_development")
             context["artifact"] = ""
             context["response"] = ""
             context["response_measure"] = ""
@@ -523,6 +545,12 @@ class ArchitectureRepository:
             return f"Record body is placeholder text for {record.id}."
         return None
 
+    def _content_warnings(self, record: ArchitectureRecord) -> list[str]:
+        checker = _CONTENT_WARNING_CHECKERS.get(record.type)
+        if checker is None:
+            return []
+        return checker(record)
+
 
 def _section_document(section_spec: SectionSpec) -> str:
     return "\n".join(
@@ -548,3 +576,175 @@ def _non_empty_sequence(value: object) -> bool:
 
 def _non_empty_text(value: object) -> bool:
     return isinstance(value, str) and bool(value.strip())
+
+
+def _contains_adr_sections(body: str) -> bool:
+    body_lower = body.lower()
+    return all(
+        heading in body_lower
+        for heading in ("## context", "## decision", "## consequences")
+    )
+
+
+def _looks_measurable(value: str) -> bool:
+    lowered = value.lower()
+    if any(char.isdigit() for char in lowered):
+        return True
+    indicators = (
+        "%",
+        "percent",
+        "ms",
+        "millisecond",
+        "second",
+        "minute",
+        "hour",
+        "count",
+        "byte",
+        "identical",
+        "latency",
+        "throughput",
+        "less than",
+        "greater than",
+        "at least",
+        "at most",
+        "zero",
+        "one",
+        "two",
+    )
+    return any(indicator in lowered for indicator in indicators)
+
+
+def _quality_goal_warnings(record: ArchitectureRecord) -> list[str]:
+    if _non_empty_text(record.metadata.get("scenario")):
+        return []
+    return [f"Quality goal {record.id} has no scenario."]
+
+
+def _stakeholder_warnings(record: ArchitectureRecord) -> list[str]:
+    if _non_empty_sequence(record.metadata.get("expectations")):
+        return []
+    return [f"Stakeholder {record.id} has no expectations."]
+
+
+def _constraint_warnings(record: ArchitectureRecord) -> list[str]:
+    warnings: list[str] = []
+    if not _non_empty_text(record.metadata.get("impact")):
+        warnings.append(f"Constraint {record.id} has no impact.")
+    category = record.metadata.get("category")
+    if category not in ALLOWED_CONSTRAINT_CATEGORIES:
+        warnings.append(f"Constraint {record.id} has unsupported category: {category}")
+    return warnings
+
+
+def _context_interface_warnings(record: ArchitectureRecord) -> list[str]:
+    warnings: list[str] = []
+    if not _non_empty_text(record.metadata.get("partner")):
+        warnings.append(f"Context interface {record.id} has no partner.")
+    if not any(
+        _non_empty_sequence(record.metadata.get(field))
+        for field in ("inputs", "outputs", "channels")
+    ):
+        warnings.append(
+            f"Context interface {record.id} has no inputs, outputs, or channels."
+        )
+    return warnings
+
+
+def _white_box_warnings(record: ArchitectureRecord) -> list[str]:
+    warnings: list[str] = []
+    level = record.metadata.get("level")
+    if isinstance(level, bool) or not isinstance(level, int) or level < 1:
+        warnings.append(f"White box {record.id} must have a positive integer level.")
+    parent = record.metadata.get("parent")
+    if isinstance(level, int) and level > 1 and parent in (None, "", "null"):
+        warnings.append(f"White box {record.id} at level > 1 requires a parent.")
+    return warnings
+
+
+def _black_box_warnings(record: ArchitectureRecord) -> list[str]:
+    if record.metadata.get("parent") not in (None, "", "null"):
+        return []
+    return [
+        (
+            f"Black box {record.id} should declare a parent unless it is "
+            "intentionally top-level external."
+        )
+    ]
+
+
+def _runtime_scenario_warnings(record: ArchitectureRecord) -> list[str]:
+    warnings: list[str] = []
+    if not _non_empty_sequence(record.metadata.get("participants")):
+        warnings.append(f"Runtime scenario {record.id} has no participants.")
+    if not _non_empty_text(record.metadata.get("trigger")):
+        warnings.append(f"Runtime scenario {record.id} has no trigger.")
+    return warnings
+
+
+def _infrastructure_warnings(record: ArchitectureRecord) -> list[str]:
+    warnings: list[str] = []
+    environment = record.metadata.get("environment")
+    if not _non_empty_text(environment):
+        warnings.append(f"Infrastructure {record.id} has no environment.")
+    if (
+        isinstance(environment, str)
+        and environment.strip().lower() == "production"
+        and not _non_empty_sequence(record.metadata.get("maps_building_blocks"))
+    ):
+        warnings.append(
+            
+                f"Infrastructure {record.id} in production must map building "
+                "blocks explicitly."
+            
+        )
+    return warnings
+
+
+def _adr_warnings(record: ArchitectureRecord) -> list[str]:
+    if _contains_adr_sections(record.body):
+        return []
+    return [
+        (
+            f"ADR {record.id} should contain Context, Decision, and "
+            "Consequences sections."
+        )
+    ]
+
+
+def _quality_scenario_warnings(record: ArchitectureRecord) -> list[str]:
+    response_measure = record.metadata.get("response_measure")
+    if not _non_empty_text(response_measure):
+        return [f"Quality scenario {record.id} has no response_measure."]
+    if isinstance(response_measure, str) and not _looks_measurable(response_measure):
+        return [
+            f"Quality scenario {record.id} response_measure should be measurable."
+        ]
+    return []
+
+
+def _risk_warnings(record: ArchitectureRecord) -> list[str]:
+    warnings: list[str] = []
+    severity = record.metadata.get("severity")
+    probability = record.metadata.get("probability")
+    if severity not in ALLOWED_RISK_LEVELS:
+        warnings.append(f"Risk {record.id} has unsupported severity: {severity}")
+    if probability not in ALLOWED_RISK_LEVELS:
+        warnings.append(
+            f"Risk {record.id} has unsupported probability: {probability}"
+        )
+    return warnings
+
+
+_CONTENT_WARNING_CHECKERS: dict[str, callable] = {
+    "quality_goal": _quality_goal_warnings,
+    "stakeholder": _stakeholder_warnings,
+    "constraint": _constraint_warnings,
+    "context_interface": _context_interface_warnings,
+    "white_box": _white_box_warnings,
+    "black_box": _black_box_warnings,
+    "runtime_scenario": _runtime_scenario_warnings,
+    "infrastructure": _infrastructure_warnings,
+    "adr": _adr_warnings,
+    "quality_scenario": _quality_scenario_warnings,
+    "risk": _risk_warnings,
+}

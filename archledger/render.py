@@ -67,6 +67,7 @@ def build_document(
         generator=f"archledger {__version__}",
         arc42_template_version=repo.config.arc42_template_version,
         section_body=lambda section_key: _section_body(sections, section_key),
+        requirements_overview=lambda: _requirements_overview(records),
         quality_goals_table=lambda: _quality_goals_table(records),
         stakeholders_table=lambda: _stakeholders_table(records),
         constraints_list=lambda: _constraints_list(records),
@@ -74,7 +75,8 @@ def build_document(
             records,
             context_kind,
         ),
-        building_block_view=lambda: _render_blocks(records),
+        solution_strategy_items=lambda: _solution_strategy_items(records),
+        building_block_hierarchy=lambda: _building_block_hierarchy(records),
         runtime_scenarios=lambda: _render_named_records(
             records,
             "runtime_scenario",
@@ -86,9 +88,10 @@ def build_document(
             "##",
         ),
         concepts=lambda: _render_named_records(records, "concept", "##"),
-        adrs=lambda: _render_named_records(records, "adr", "##"),
+        adr_sections=lambda: _adr_sections(records),
+        quality_requirements_overview=lambda: _quality_requirements_overview(records),
         quality_scenarios=lambda: _quality_scenarios(records),
-        risks=lambda: _render_named_records(records, "risk", "##"),
+        risk_table=lambda: _risk_table(records),
         glossary_table=lambda: _glossary_table(records),
     )
     output_path = _resolve_output_path(repo, output)
@@ -117,13 +120,31 @@ def _section_body(
     return body
 
 
+def _requirements_overview(records: list[ArchitectureRecord]) -> str:
+    requirements = _records_of_type(records, "requirement")
+    rows = [
+        [
+            record.title,
+            str(record.metadata.get("priority", "")),
+            str(record.metadata.get("source", "")),
+            ", ".join(_string_list(record.metadata.get("stakeholders"))),
+            ", ".join(_string_list(record.metadata.get("quality_goals"))),
+        ]
+        for record in requirements
+    ]
+    return _markdown_table(
+        ["Title", "Priority", "Source", "Stakeholders", "Quality goals"],
+        rows,
+    )
+
+
 def _quality_goals_table(records: list[ArchitectureRecord]) -> str:
     quality_goals = _records_of_type(records, "quality_goal")
     rows = [
         [
             record.title,
             str(record.metadata.get("priority", "")),
-            str(record.metadata.get("scenario", "")),
+            _compact_text(record.metadata.get("scenario")),
         ]
         for record in quality_goals
     ]
@@ -178,45 +199,129 @@ def _context_interfaces(records: list[ArchitectureRecord], context_kind: str) ->
     return "\n".join(lines)
 
 
-def _render_blocks(records: list[ArchitectureRecord]) -> str:
-    building_blocks = [
-        record
-        for record in records
-        if record.type in {"white_box", "black_box", "interface"}
-    ]
-    if not building_blocks:
+def _solution_strategy_items(records: list[ArchitectureRecord]) -> str:
+    items = _records_of_type(records, "strategy_item")
+    if not items:
         return EMPTY_PLACEHOLDER
 
     lines: list[str] = []
-    for record in sorted(building_blocks, key=record_sort_key):
-        heading = "##" if record.type == "white_box" else "###"
-        lines.extend([f"{heading} {record.title}", ""])
-        body = record.body.strip() or EMPTY_PLACEHOLDER
-        lines.append(body)
-        if record.type == "black_box":
-            interfaces = ", ".join(_string_list(record.metadata.get("interfaces")))
+    for record in items:
+        drivers = ", ".join(_string_list(record.metadata.get("drivers")))
+        constraints = ", ".join(_string_list(record.metadata.get("constraints")))
+        related_adrs = ", ".join(_string_list(record.metadata.get("related_adrs")))
+        lines.extend(
+            [
+                f"## {record.title}",
+                "",
+                f"**Drivers:** {drivers}",
+                f"**Constraints:** {constraints}",
+                f"**Related ADRs:** {related_adrs}",
+                "",
+                record.body.strip() or EMPTY_PLACEHOLDER,
+                "",
+            ]
+        )
+    return "\n".join(lines).rstrip()
+
+
+def _building_block_hierarchy(records: list[ArchitectureRecord]) -> str:
+    white_boxes = _records_of_type(records, "white_box")
+    black_boxes = _records_of_type(records, "black_box")
+    interfaces = _records_of_type(records, "interface")
+    if not white_boxes and not black_boxes and not interfaces:
+        return EMPTY_PLACEHOLDER
+
+    lines: list[str] = []
+    for record in white_boxes:
+        lines.extend(
+            [
+                f"## Whitebox {record.title}",
+                "",
+                record.body.strip() or EMPTY_PLACEHOLDER,
+                "",
+            ]
+        )
+    black_box_levels = sorted(
+        {
+            level
+            for level in (
+                record.metadata.get("level")
+                for record in black_boxes
+            )
+            if isinstance(level, int) and not isinstance(level, bool)
+        }
+    )
+    for level in black_box_levels:
+        lines.extend([f"### Level {level}", ""])
+        for record in black_boxes:
+            if record.metadata.get("level") != level:
+                continue
+            interfaces_value = ", ".join(
+                _string_list(record.metadata.get("interfaces"))
+            )
             locations = ", ".join(_string_list(record.metadata.get("location")))
-            requirements = ", ".join(
+            fulfilled_requirements = ", ".join(
                 _string_list(record.metadata.get("fulfilled_requirements"))
             )
             risks = ", ".join(_string_list(record.metadata.get("risks")))
             lines.extend(
                 [
+                    f"#### {record.title}",
                     "",
-                    f"**Interfaces:** {interfaces}",
+                    f"**Parent:** {record.metadata.get('parent', '')}",
+                    f"**Interfaces:** {interfaces_value}",
                     f"**Location:** {locations}",
-                    f"**Fulfilled requirements:** {requirements}",
+                    f"**Fulfilled requirements:** {fulfilled_requirements}",
                     f"**Risks:** {risks}",
+                    "",
+                    record.body.strip() or EMPTY_PLACEHOLDER,
+                    "",
                 ]
             )
-        if record.type == "interface":
+    if interfaces:
+        lines.extend(["## Interfaces", ""])
+        for record in interfaces:
+            providers = ", ".join(_string_list(record.metadata.get("providers")))
+            consumers = ", ".join(_string_list(record.metadata.get("consumers")))
             lines.extend(
                 [
+                    f"### {record.title}",
                     "",
+                    f"**Providers:** {providers}",
+                    f"**Consumers:** {consumers}",
                     f"**Protocol:** {record.metadata.get('protocol', '')}",
+                    "",
+                    record.body.strip() or EMPTY_PLACEHOLDER,
+                    "",
                 ]
             )
+    return "\n".join(lines).rstrip()
+
+
+def _adr_sections(records: list[ArchitectureRecord]) -> str:
+    adrs = _records_of_type(records, "adr")
+    if not adrs:
+        return EMPTY_PLACEHOLDER
+    lines: list[str] = []
+    for record in adrs:
+        deciders = ", ".join(_string_list(record.metadata.get("deciders")))
+        supersedes = ", ".join(_string_list(record.metadata.get("supersedes")))
+        related = ", ".join(_string_list(record.metadata.get("related")))
         lines.append("")
+        lines.extend(
+            [
+                f"## {record.title}",
+                "",
+                f"**Status:** {record.status}",
+                f"**Date:** {record.metadata.get('date', '')}",
+                f"**Deciders:** {deciders}",
+                f"**Supersedes:** {supersedes}",
+                f"**Related:** {related}",
+                "",
+                record.body.strip() or EMPTY_PLACEHOLDER,
+                "",
+            ]
+        )
     return "\n".join(lines).rstrip()
 
 
@@ -258,6 +363,41 @@ def _quality_scenarios(records: list[ArchitectureRecord]) -> str:
     )
 
 
+def _quality_requirements_overview(records: list[ArchitectureRecord]) -> str:
+    requirements = _records_of_type(records, "quality_requirement")
+    rows = [
+        [
+            record.title,
+            str(record.metadata.get("category", "")),
+            str(record.metadata.get("measure", "")),
+            ", ".join(_string_list(record.metadata.get("scenarios"))),
+        ]
+        for record in requirements
+    ]
+    return _markdown_table(
+        ["Title", "Category", "Measure", "Scenarios"],
+        rows,
+    )
+
+
+def _risk_table(records: list[ArchitectureRecord]) -> str:
+    risks = _records_of_type(records, "risk")
+    rows = [
+        [
+            record.title,
+            str(record.metadata.get("severity", "")),
+            str(record.metadata.get("probability", "")),
+            str(record.metadata.get("mitigation", "")),
+            _compact_text(record.body),
+        ]
+        for record in risks
+    ]
+    return _markdown_table(
+        ["Title", "Severity", "Probability", "Mitigation", "Notes"],
+        rows,
+    )
+
+
 def _glossary_table(records: list[ArchitectureRecord]) -> str:
     terms = _records_of_type(records, "glossary_term")
     rows = [
@@ -293,3 +433,9 @@ def _string_list(value: object) -> list[str]:
     if not isinstance(value, list):
         return []
     return [str(item) for item in value]
+
+
+def _compact_text(value: object) -> str:
+    if not isinstance(value, str):
+        return ""
+    return " ".join(value.split())

@@ -23,9 +23,16 @@ _ALLOWED_TOP_LEVEL_KEYS = {
     "project_name",
     "build",
     "arc42",
+    "skill",
 }
-_ALLOWED_BUILD_KEYS = {"default_output", "include_draft", "strict"}
-_ALLOWED_ARC42_KEYS = {"template_version", "language", "title"}
+_ALLOWED_BUILD_KEYS = {
+    "default_output",
+    "include_draft",
+    "include_superseded",
+    "strict",
+}
+_ALLOWED_ARC42_KEYS = {"template_version", "language", "title", "include_help"}
+_ALLOWED_SKILL_KEYS = {"installed", "path"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,10 +43,14 @@ class ProjectConfig:
     project_name: str
     build_default_output: str = "architecture.md"
     build_include_draft: bool = False
+    build_include_superseded: bool = False
     build_strict: bool = False
     arc42_template_version: str = "9.0-EN"
     arc42_language: str = "en"
     arc42_title: str = "Architecture Documentation"
+    arc42_include_help: bool = False
+    skill_installed: bool = False
+    skill_path: str = "skills/archledger/SKILL.md"
 
 
 def normalize_project_name(name: str) -> str:
@@ -66,7 +77,7 @@ def render_default_config(
         [
             "# Project-local archledger configuration.",
             "# This file lives in the source project root.",
-            "config_version = 1",
+            "config_version = 2",
             f'archledger_dir = "{archledger_dir}"',
             "",
             "# Stable project identity. Commit this with your source tree.",
@@ -76,12 +87,18 @@ def render_default_config(
             "[build]",
             'default_output = "architecture.md"',
             "include_draft = false",
+            "include_superseded = false",
             "strict = false",
             "",
             "[arc42]",
             'template_version = "9.0-EN"',
             'language = "en"',
             'title = "Architecture Documentation"',
+            "include_help = false",
+            "",
+            "[skill]",
+            "installed = true",
+            'path = "skills/archledger/SKILL.md"',
             "",
         ]
     )
@@ -113,10 +130,16 @@ def load_project_config(path: Path) -> ProjectConfig:
         _ALLOWED_ARC42_KEYS,
         "arc42",
     )
+    skill_data = _validate_subtable(
+        path,
+        raw_data.get("skill"),
+        _ALLOWED_SKILL_KEYS,
+        "skill",
+    )
 
     config_version = raw_data.get("config_version")
-    if config_version != 1:
-        raise ConfigError("config_version must be 1.")
+    if config_version not in {1, 2}:
+        raise ConfigError("config_version must be 1 or 2.")
 
     archledger_dir = raw_data.get("archledger_dir")
     if not isinstance(archledger_dir, str) or not archledger_dir.strip():
@@ -135,13 +158,21 @@ def load_project_config(path: Path) -> ProjectConfig:
         raise ConfigError("build.default_output must be a non-empty string.")
 
     include_draft = build_data.get("include_draft", False)
+    include_superseded = build_data.get("include_superseded", False)
     strict = build_data.get("strict", False)
-    if not isinstance(include_draft, bool) or not isinstance(strict, bool):
-        raise ConfigError("build.include_draft and build.strict must be booleans.")
+    if not all(
+        isinstance(value, bool)
+        for value in (include_draft, include_superseded, strict)
+    ):
+        raise ConfigError(
+            "build.include_draft, build.include_superseded, and build.strict "
+            "must be booleans."
+        )
 
     template_version = arc42_data.get("template_version", "9.0-EN")
     language = arc42_data.get("language", "en")
     title = arc42_data.get("title", "Architecture Documentation")
+    include_help = arc42_data.get("include_help", False)
     if not all(
         isinstance(value, str) and value.strip()
         for value in (template_version, language, title)
@@ -150,18 +181,31 @@ def load_project_config(path: Path) -> ProjectConfig:
             "arc42.template_version, arc42.language, and arc42.title "
             "must be non-empty strings."
         )
+    if not isinstance(include_help, bool):
+        raise ConfigError("arc42.include_help must be a boolean.")
+
+    skill_installed = skill_data.get("installed", False)
+    skill_path = skill_data.get("path", "skills/archledger/SKILL.md")
+    if not isinstance(skill_installed, bool):
+        raise ConfigError("skill.installed must be a boolean.")
+    if not isinstance(skill_path, str) or not skill_path.strip():
+        raise ConfigError("skill.path must be a non-empty string.")
 
     return ProjectConfig(
-        config_version=1,
+        config_version=cast(int, config_version),
         archledger_dir=archledger_dir,
         project_uuid=_validate_uuid(project_uuid),
         project_name=normalize_project_name(project_name),
         build_default_output=default_output,
         build_include_draft=include_draft,
+        build_include_superseded=include_superseded,
         build_strict=strict,
         arc42_template_version=cast(str, template_version),
         arc42_language=cast(str, language),
         arc42_title=cast(str, title),
+        arc42_include_help=include_help,
+        skill_installed=skill_installed,
+        skill_path=skill_path,
     )
 
 

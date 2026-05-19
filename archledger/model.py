@@ -9,13 +9,17 @@ VALID_STATUSES = frozenset(
 VISIBLE_BY_DEFAULT_STATUSES = frozenset({"proposed", "accepted", "deprecated"})
 REQUIRED_RECORD_FIELDS = ("id", "type", "title", "status", "section", "order")
 PLACEHOLDER_SNIPPETS = (
+    "Describe this requirement.",
     "Describe the purpose and responsibility of this black box.",
     "Explain the decomposition.",
+    "Explain this strategy item.",
     "Describe the forces and problem.",
     "Describe the decision.",
     "Describe positive and negative consequences.",
     "Alternative: reason rejected.",
     "Explain the architecture concept.",
+    "Describe the quality scenario.",
+    "Describe this quality requirement.",
     "Describe the runtime scenario.",
     "Describe the deployment or infrastructure view.",
 )
@@ -37,10 +41,12 @@ SECTION_ORDER = {
 }
 
 RECORD_TYPE_TO_DIR = {
+    "requirement": "requirements",
     "stakeholder": "stakeholders",
     "quality_goal": "quality_goals",
     "constraint": "constraints",
     "context_interface": "contexts",
+    "strategy_item": "strategy",
     "white_box": "building_blocks",
     "black_box": "building_blocks",
     "interface": "building_blocks",
@@ -48,16 +54,19 @@ RECORD_TYPE_TO_DIR = {
     "infrastructure": "deployment",
     "concept": "concepts",
     "adr": "decisions",
+    "quality_requirement": "quality_requirements",
     "quality_scenario": "quality_scenarios",
     "risk": "risks",
     "glossary_term": "glossary",
 }
 
 RECORD_TYPE_TO_FILENAME_PREFIX = {
+    "requirement": "requirement",
     "stakeholder": "stakeholder",
     "quality_goal": "quality_goal",
     "constraint": "constraint",
     "context_interface": "context_interface",
+    "strategy_item": "strategy_item",
     "white_box": "white_box",
     "black_box": "black_box",
     "interface": "interface",
@@ -65,16 +74,19 @@ RECORD_TYPE_TO_FILENAME_PREFIX = {
     "infrastructure": "infrastructure",
     "concept": "concept",
     "adr": "adr",
+    "quality_requirement": "quality_requirement",
     "quality_scenario": "quality_scenario",
     "risk": "risk",
     "glossary_term": "glossary",
 }
 
 RECORD_TYPE_TO_DEFAULT_SECTION = {
+    "requirement": "introduction_and_goals",
     "stakeholder": "introduction_and_goals",
     "quality_goal": "introduction_and_goals",
     "constraint": "architecture_constraints",
     "context_interface": "context_and_scope",
+    "strategy_item": "solution_strategy",
     "white_box": "building_block_view",
     "black_box": "building_block_view",
     "interface": "building_block_view",
@@ -82,6 +94,7 @@ RECORD_TYPE_TO_DEFAULT_SECTION = {
     "infrastructure": "deployment_view",
     "concept": "cross_cutting_concepts",
     "adr": "architecture_decisions",
+    "quality_requirement": "quality_requirements",
     "quality_scenario": "quality_requirements",
     "risk": "risks_and_technical_debt",
     "glossary_term": "glossary",
@@ -89,10 +102,12 @@ RECORD_TYPE_TO_DEFAULT_SECTION = {
 
 VALID_RECORD_TYPES = frozenset(RECORD_TYPE_TO_DIR)
 RECORD_TYPE_TO_TEMPLATE = {
+    "requirement": "requirement.md.j2",
     "stakeholder": "stakeholder.md.j2",
     "quality_goal": "quality_goal.md.j2",
     "constraint": "constraint.md.j2",
     "context_interface": "context_interface.md.j2",
+    "strategy_item": "strategy_item.md.j2",
     "white_box": "white_box.md.j2",
     "black_box": "black_box.md.j2",
     "interface": "interface.md.j2",
@@ -100,18 +115,22 @@ RECORD_TYPE_TO_TEMPLATE = {
     "infrastructure": "infrastructure.md.j2",
     "concept": "concept.md.j2",
     "adr": "adr.md.j2",
+    "quality_requirement": "quality_requirement.md.j2",
     "quality_scenario": "quality_scenario.md.j2",
     "risk": "risk.md.j2",
     "glossary_term": "glossary_term.md.j2",
 }
 
 CLI_KIND_ALIASES = {
+    "requirement": "requirement",
     "stakeholder": "stakeholder",
     "quality-goal": "quality_goal",
     "quality_goal": "quality_goal",
     "constraint": "constraint",
     "context-interface": "context_interface",
     "context_interface": "context_interface",
+    "strategy-item": "strategy_item",
+    "strategy_item": "strategy_item",
     "white-box": "white_box",
     "white_box": "white_box",
     "black-box": "black_box",
@@ -122,6 +141,8 @@ CLI_KIND_ALIASES = {
     "infrastructure": "infrastructure",
     "concept": "concept",
     "adr": "adr",
+    "quality-requirement": "quality_requirement",
+    "quality_requirement": "quality_requirement",
     "quality-scenario": "quality_scenario",
     "quality_scenario": "quality_scenario",
     "risk": "risk",

@@ -40,6 +40,7 @@ archledger status
 archledger where
 archledger list --include-draft
 archledger show black_box_0001
+archledger seed arc42-minimal
 ```
 
 ## Storage layout
@@ -55,6 +56,7 @@ archledger.toml
     ...
     12_glossary.md
   records/
+    requirements/
     building_blocks/
     concepts/
     constraints/
@@ -63,10 +65,12 @@ archledger.toml
     deployment/
     glossary/
     quality_goals/
+    quality_requirements/
     quality_scenarios/
     risks/
     runtime/
     stakeholders/
+    strategy/
   build/
     architecture.md
 ```
@@ -141,6 +145,14 @@ archledger --json build --output /tmp/architecture.md
 ```
 
 The generated file is disposable output. The canonical source of truth stays in the individual Markdown records and section files.
+
+## Agent skill
+
+The repository-provided agent protocol lives at `skills/archledger/SKILL.md`.
+It is repository content for coding agents, not packaged Python data. Agents
+should prefer `archledger --json where`, `archledger --json check`,
+`archledger build`, and `archledger seed arc42-minimal` when bootstrapping or
+updating architecture documentation.
 
 ## Agent guidance
 
