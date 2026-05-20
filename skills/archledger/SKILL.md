@@ -30,7 +30,13 @@ Use this skill when a coding agent needs to create, inspect, enrich, repair, or 
 
 ## Fresh-context entry protocol
 
-Read current source state directly first:
+When the user asks to update existing archledger content, detect source drift first:
+
+```bash
+archledger --json changed
+```
+
+Then read current archledger source state directly:
 
 ```bash
 archledger --json where
@@ -42,9 +48,10 @@ archledger --json read --include-body --include-draft
 Then:
 
 1. Treat the returned source fragments as the current architecture truth.
-2. Use generated exports only as disposable deliverables.
-3. Use `archledger build --format markdown` or `archledger build --format asciidoc` for native validation.
-4. Do not read `.archledger/build/*` as source of truth.
+2. Treat `changed` output as the default scope filter for which source files and architecture fragments to inspect.
+3. Use generated exports only as disposable deliverables.
+4. Use `archledger build --format markdown` or `archledger build --format asciidoc` for native validation.
+5. Do not read `.archledger/build/*` as source of truth.
 
 If storage is missing and the user asked to create architecture docs in this repository:
 
@@ -90,8 +97,28 @@ updated_at: "2026-05-20T00:00:00Z"
 
 `body_format` must match the project source format (`markdown` or `asciidoc`).
 
+When a fragment documents concrete implementation artifacts, add optional `source_refs` metadata:
+
+```yaml
+source_refs:
+  - archledger/repository.py#ArchitectureRepository
+  - path: archledger/storage/project_config.py
+    symbols:
+      - ProjectConfig
+    reason: "Tracking configuration contract"
+  - path: archledger/templates/
+    reason: "Directory-wide template ownership"
+```
+
+Rules:
+
+- paths are relative to the workspace root
+- directory refs end with `/`
+- use `changed` output to identify unlinked changed files and add `source_refs` where traceability is useful
+
 ## Reading and editing rules
 
+- Prefer `archledger --json changed` before broad repository reads when the user wants architecture docs refreshed.
 - Prefer `archledger --json read --include-body` over `archledger build` when you need the current architecture state.
 - Read the repository evidence before writing documentation: README, tests, package metadata, CI, deployment files, and design notes.
 - Update section files and record files directly; never patch generated complete documents as the source of truth.
@@ -122,6 +149,7 @@ archledger check
 archledger build --format markdown
 archledger build --format asciidoc
 python -m pytest -q
+archledger --json snapshot --reason after-archledger-update
 ```
 
 Choose the native build that matches the project source format. Use optional export builds only when the user asked for those artifacts or when validating converter-backed formats.
@@ -129,8 +157,10 @@ Choose the native build that matches the project source format. Use optional exp
 For automation, prefer JSON:
 
 ```bash
+archledger --json changed
 archledger --json check
 archledger --json read --include-body
+archledger --json snapshot --reason after-archledger-update
 archledger --json build --formats html,markdown
 ```
 

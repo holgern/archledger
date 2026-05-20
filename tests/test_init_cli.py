@@ -35,7 +35,7 @@ def test_init_project_name_defaults_to_workspace_basename(tmp_path: Path) -> Non
 
     assert result.exit_code == 0
     config_text = (tmp_path / "archledger.toml").read_text(encoding="utf-8")
-    assert "config_version = 4" in config_text
+    assert "config_version = 5" in config_text
     assert "[source]" in config_text
     assert 'format = "asciidoc"' in config_text
     assert "schema_version = 2" in config_text
@@ -46,6 +46,9 @@ def test_init_project_name_defaults_to_workspace_basename(tmp_path: Path) -> Non
     assert "include_superseded = false" in config_text
     assert 'converter = "auto"' in config_text
     assert "[skill]" in config_text
+    assert "[tracking]" in config_text
+    assert 'state_file = "source-state.json"' in config_text
+    assert 'scanner = "auto"' in config_text
 
 
 def test_init_markdown_source_writes_markdown_config(tmp_path: Path) -> None:

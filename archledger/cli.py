@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Annotated
 
@@ -10,7 +10,7 @@ import typer
 import yaml
 
 from archledger import __version__
-from archledger.errors import ArchledgerError
+from archledger.errors import ArchledgerError, StorageError
 from archledger.migration import convert_sources
 from archledger.model import ArchitectureRecord, is_visible_status, normalize_kind
 from archledger.render import build_document
@@ -20,6 +20,15 @@ from archledger.repository import (
     CheckResult,
     InitResult,
     StatusResult,
+)
+from archledger.source_tracking import (
+    ChangeSet,
+    ChangedFile,
+    ImpactedRecord,
+    SourceState,
+    diff_source_states,
+    resolve_impacts,
+    scan_workspace,
 )
 from archledger.storage.common import write_text
 from archledger.storage.paths import (
@@ -32,6 +41,7 @@ from archledger.storage.project_config import (
     ProjectConfig,
     render_default_config,
 )
+from archledger.storage.source_state import read_source_state, write_source_state
 
 app = typer.Typer(add_completion=False, no_args_is_help=True)
 
@@ -433,6 +443,58 @@ def check(
 
 
 @app.command()
+def snapshot(
+    ctx: typer.Context,
+    reason: Annotated[str, typer.Option("--reason")] = "manual",
+) -> None:
+    state = _state(ctx)
+
+    def build_result(
+        repo: ArchitectureRepository,
+        paths: ProjectPaths,
+        config: ProjectConfig,
+    ) -> dict[str, object]:
+        repo.status()
+        existing_state = _load_tracking_baseline(paths, config)
+        scanned_state = scan_workspace(paths, config, reason=reason)
+        if existing_state is not None:
+            scanned_state = replace(scanned_state, created_at=existing_state.created_at)
+        write_source_state(paths.source_state_path, scanned_state)
+        return _snapshot_payload(paths, scanned_state)
+
+    _run_configured_command(state, "snapshot", build_result, _format_snapshot_message)
+
+
+@app.command()
+def changed(
+    ctx: typer.Context,
+    include_draft: Annotated[bool, typer.Option("--include-draft")] = False,
+    include_superseded: Annotated[bool, typer.Option("--include-superseded")] = False,
+) -> None:
+    state = _state(ctx)
+
+    def build_result(
+        repo: ArchitectureRepository,
+        paths: ProjectPaths,
+        config: ProjectConfig,
+    ) -> dict[str, object]:
+        repo.status()
+        baseline = _load_tracking_baseline(paths, config)
+        current = scan_workspace(paths, config, reason="current-scan")
+        changes = diff_source_states(baseline, current)
+        if baseline is not None:
+            changes = resolve_impacts(
+                repo.load_all_records(include_sections=True),
+                changes,
+                include_draft=include_draft,
+                include_superseded=include_superseded,
+            )
+        return _changed_payload(paths, changes)
+
+    _run_configured_command(state, "changed", build_result, _format_changed_message)
+
+
+@app.command()
 def build(
     ctx: typer.Context,
     output: Annotated[Path | None, typer.Option("--output")] = None,
@@ -581,6 +643,92 @@ def _where_payload(
     }
 
 
+def _snapshot_payload(paths: ProjectPaths, state: SourceState) -> dict[str, object]:
+    return {
+        "schema": "archledger.snapshot.v1",
+        "source_state_path": str(paths.source_state_path),
+        "reason": state.reason,
+        "scanner_used": state.scanner.get("used", "filesystem"),
+        "file_count": len(state.files),
+        "updated_at": state.updated_at,
+    }
+
+
+def _changed_payload(paths: ProjectPaths, changes: ChangeSet) -> dict[str, object]:
+    baseline: dict[str, object] = {"exists": changes.baseline_exists}
+    if changes.baseline_exists:
+        baseline["updated_at"] = changes.baseline_updated_at
+        baseline["reason"] = changes.baseline_reason
+    return {
+        "schema": "archledger.changed.v1",
+        "baseline": baseline,
+        "scan": {
+            "scanned_at": changes.current_scanned_at,
+            "scanner_used": changes.scanner_used,
+            "file_count": changes.file_count,
+        },
+        "changes": {
+            "added": [
+                _changed_file_payload(item)
+                for item in changes.changed_files
+                if item.change == "added"
+            ],
+            "modified": [
+                _changed_file_payload(item)
+                for item in changes.changed_files
+                if item.change == "modified"
+            ],
+            "deleted": [
+                _changed_file_payload(item)
+                for item in changes.changed_files
+                if item.change == "deleted"
+            ],
+            "possible_renames": [
+                {
+                    "old_path": item.old_path,
+                    "new_path": item.new_path,
+                    "sha256": item.sha256,
+                }
+                for item in changes.possible_renames
+            ],
+            "unbaselined_files": list(changes.unbaselined_files),
+        },
+        "impact": {
+            "records": [
+                _impacted_record_payload(paths, item) for item in changes.impacted_records
+            ],
+            "sections": list(changes.impacted_sections),
+            "unlinked_changed_files": list(changes.unlinked_changed_files),
+        },
+    }
+
+
+def _changed_file_payload(item: ChangedFile) -> dict[str, object]:
+    payload: dict[str, object] = {"path": item.path}
+    if item.old_sha256 is not None:
+        payload["old_sha256"] = item.old_sha256
+    if item.new_sha256 is not None:
+        payload["new_sha256"] = item.new_sha256
+    if item.size is not None:
+        payload["size"] = item.size
+    return payload
+
+
+def _impacted_record_payload(
+    paths: ProjectPaths,
+    item: ImpactedRecord,
+) -> dict[str, object]:
+    return {
+        "id": item.id,
+        "type": item.type,
+        "title": item.title,
+        "status": item.status,
+        "section": item.section,
+        "path": _display_path(paths.workspace_root, Path(item.path)),
+        "matched_refs": list(item.matched_refs),
+    }
+
+
 def _format_init_message(result: InitResult) -> str:
     return "\n".join(
         [
@@ -691,6 +839,64 @@ def _format_check_message(payload: dict[str, object]) -> str:
     return "\n".join(lines)
 
 
+def _format_snapshot_message(payload: dict[str, object]) -> str:
+    return (
+        f"Snapshot saved to {payload['source_state_path']} "
+        f"({payload['file_count']} file(s), scanner: {payload['scanner_used']})."
+    )
+
+
+def _format_changed_message(payload: dict[str, object]) -> str:
+    baseline = payload.get("baseline")
+    changes = payload.get("changes")
+    impact = payload.get("impact")
+    if not isinstance(baseline, dict) or not isinstance(changes, dict) or not isinstance(
+        impact, dict
+    ):
+        raise RuntimeError("Changed payload was malformed.")
+    if baseline.get("exists") is False:
+        lines = ["No source baseline found. Run: archledger snapshot"]
+        for path in changes.get("unbaselined_files", []):
+            lines.append(f"- unbaselined: {path}")
+        return "\n".join(lines)
+
+    lines = [f"Changed since baseline {baseline.get('updated_at', 'unknown')}:"]
+    for label in ("modified", "added", "deleted"):
+        entries = changes.get(label, [])
+        if not isinstance(entries, list):
+            continue
+        for entry in entries:
+            if isinstance(entry, dict):
+                lines.append(f"- {label}: {entry['path']}")
+    rename_entries = changes.get("possible_renames", [])
+    if isinstance(rename_entries, list):
+        for entry in rename_entries:
+            if isinstance(entry, dict):
+                lines.append(
+                    f"- possible rename: {entry['old_path']} -> {entry['new_path']}"
+                )
+    sections = impact.get("sections", [])
+    if isinstance(sections, list) and sections:
+        lines.append("")
+        lines.append("Impacted archledger sections:")
+        for section in sections:
+            lines.append(f"- {section}")
+    records = impact.get("records", [])
+    if isinstance(records, list) and records:
+        lines.append("")
+        lines.append("Impacted records:")
+        for record in records:
+            if isinstance(record, dict):
+                lines.append(f"- {record['id']} {record['title']}")
+    unlinked = impact.get("unlinked_changed_files", [])
+    if isinstance(unlinked, list) and unlinked:
+        lines.append("")
+        lines.append("Unlinked changed files:")
+        for path in unlinked:
+            lines.append(f"- {path}")
+    return "\n".join(lines)
+
+
 def _format_build_message(payload: dict[str, object]) -> str:
     outputs = payload.get("outputs")
     if not isinstance(outputs, list) or not outputs:
@@ -703,6 +909,20 @@ def _format_build_message(payload: dict[str, object]) -> str:
         if isinstance(item, dict):
             lines.append(f"{item['format']}: {item['output_path']}")
     return "\n".join(lines)
+
+
+def _load_tracking_baseline(
+    paths: ProjectPaths,
+    config: ProjectConfig,
+) -> SourceState | None:
+    state = read_source_state(paths.source_state_path)
+    if state is None:
+        return None
+    if state.project_uuid != config.project_uuid:
+        raise StorageError(
+            "source-state project_uuid does not match the current project configuration."
+        )
+    return state
 
 
 def _format_convert_sources_message(payload: dict[str, object]) -> str:

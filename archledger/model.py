@@ -267,6 +267,13 @@ MAJOR_SECTION_SPECS = (
 
 
 @dataclass(frozen=True, slots=True)
+class SourceRef:
+    path: str
+    symbols: tuple[str, ...]
+    reason: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class ArchitectureRecord:
     id: str
     type: str
@@ -277,6 +284,7 @@ class ArchitectureRecord:
     path: Path
     metadata: dict[str, object]
     body: str
+    source_refs: tuple[SourceRef, ...] = ()
 
 
 def normalize_kind(kind: str) -> str:

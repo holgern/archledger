@@ -19,6 +19,7 @@ from archledger.model import (
     REQUIRED_RECORD_FIELDS,
     VALID_BODY_FORMATS,
     ArchitectureRecord,
+    SourceRef,
     SectionSpec,
     default_extension_for_source_format,
     filename_for,
@@ -556,6 +557,11 @@ class ArchitectureRepository:
             path=path,
             metadata=metadata,
             body=body,
+            source_refs=_normalize_source_refs(
+                cast(str, record_id),
+                metadata.get("source_refs"),
+                workspace_root=self.paths.workspace_root,
+            )[0],
         )
         return record
 
@@ -653,6 +659,13 @@ class ArchitectureRepository:
                 else:
                     warnings.append(message)
 
+        _, source_ref_warnings = _normalize_source_refs(
+            record.id,
+            record.metadata.get("source_refs"),
+            workspace_root=self.paths.workspace_root,
+        )
+        warnings.extend(source_ref_warnings)
+
         return errors, warnings
 
     def _body_syntax_warnings(self, record: ArchitectureRecord) -> list[str]:
@@ -674,6 +687,142 @@ class ArchitectureRepository:
             ):
                 return [f"AsciiDoc record {record.id} contains Markdown headings."]
         return []
+
+
+def _normalize_source_refs(
+    record_id: str,
+    value: object,
+    *,
+    workspace_root: Path,
+) -> tuple[tuple[SourceRef, ...], list[str]]:
+    if value is None:
+        return (), []
+    if not isinstance(value, list):
+        return (), [f"Record {record_id} source_refs must be a list."]
+
+    refs: list[SourceRef] = []
+    warnings: list[str] = []
+    for index, entry in enumerate(value, start=1):
+        normalized_ref, entry_warnings = _normalize_source_ref_entry(
+            record_id,
+            entry,
+            index=index,
+            workspace_root=workspace_root,
+        )
+        warnings.extend(entry_warnings)
+        if normalized_ref is not None:
+            refs.append(normalized_ref)
+    return tuple(refs), warnings
+
+
+def _normalize_source_ref_entry(
+    record_id: str,
+    entry: object,
+    *,
+    index: int,
+    workspace_root: Path,
+) -> tuple[SourceRef | None, list[str]]:
+    if isinstance(entry, str):
+        path_text, _, symbol = entry.partition("#")
+        symbols = () if not symbol else (symbol,)
+        return _build_source_ref(
+            record_id,
+            path_text,
+            symbols,
+            "",
+            index=index,
+            workspace_root=workspace_root,
+        )
+
+    if not isinstance(entry, dict):
+        return (
+            None,
+            [
+                f"Record {record_id} source_refs entry {index} must be a string or mapping."
+            ],
+        )
+
+    raw_path = entry.get("path")
+    raw_symbols = entry.get("symbols", ())
+    raw_reason = entry.get("reason", "")
+    if not isinstance(raw_symbols, list) and not isinstance(raw_symbols, tuple):
+        return (
+            None,
+            [
+                f"Record {record_id} source_refs entry {index} symbols must be a list of strings."
+            ],
+        )
+    symbols: list[str] = []
+    for symbol in raw_symbols:
+        if not isinstance(symbol, str) or not symbol.strip():
+            return (
+                None,
+                [
+                    f"Record {record_id} source_refs entry {index} symbols must contain only non-empty strings."
+                ],
+            )
+        symbols.append(symbol.strip())
+    if not isinstance(raw_reason, str):
+        return (
+            None,
+            [f"Record {record_id} source_refs entry {index} reason must be a string."],
+        )
+    return _build_source_ref(
+        record_id,
+        raw_path,
+        tuple(symbols),
+        raw_reason.strip(),
+        index=index,
+        workspace_root=workspace_root,
+    )
+
+
+def _build_source_ref(
+    record_id: str,
+    raw_path: object,
+    symbols: tuple[str, ...],
+    reason: str,
+    *,
+    index: int,
+    workspace_root: Path,
+) -> tuple[SourceRef | None, list[str]]:
+    if not isinstance(raw_path, str) or not raw_path.strip():
+        return (
+            None,
+            [f"Record {record_id} source_refs entry {index} must define a non-empty path."],
+        )
+    original_path = raw_path.strip()
+    is_directory_ref = original_path.endswith("/")
+    normalized_path = original_path.rstrip("/")
+    pure_path = Path(normalized_path)
+    if pure_path.is_absolute():
+        return (
+            None,
+            [f"Record {record_id} source_refs entry {index} path must be relative."],
+        )
+    if ".." in pure_path.parts:
+        return (
+            None,
+            [
+                f"Record {record_id} source_refs entry {index} path must not contain '..': {original_path}"
+            ],
+        )
+    posix_path = pure_path.as_posix()
+    if not posix_path or posix_path == ".":
+        return (
+            None,
+            [f"Record {record_id} source_refs entry {index} path must not be empty."],
+        )
+    if not is_directory_ref and not (workspace_root / pure_path).exists():
+        return (
+            None,
+            [
+                f"Record {record_id} source_refs entry {index} path does not exist: {posix_path}"
+            ],
+        )
+    if is_directory_ref:
+        posix_path = f"{posix_path}/"
+    return (SourceRef(path=posix_path, symbols=symbols, reason=reason), [])
 
 
 def _section_document(

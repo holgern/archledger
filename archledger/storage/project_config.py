@@ -34,6 +34,7 @@ _ALLOWED_TOP_LEVEL_KEYS = {
     "build",
     "arc42",
     "skill",
+    "tracking",
 }
 _ALLOWED_BUILD_KEYS = {
     "default_output",
@@ -50,6 +51,15 @@ _ALLOWED_BUILD_KEYS = {
 }
 _ALLOWED_ARC42_KEYS = {"template_version", "language", "title", "include_help"}
 _ALLOWED_SKILL_KEYS = {"installed", "path"}
+_ALLOWED_TRACKING_KEYS = {
+    "enabled",
+    "state_file",
+    "scanner",
+    "include",
+    "exclude",
+    "max_file_bytes",
+    "hash_algorithm",
+}
 _ALLOWED_SOURCE_KEYS = {
     "format",
     "front_matter",
@@ -58,6 +68,29 @@ _ALLOWED_SOURCE_KEYS = {
     "schema_version",
 }
 _ALLOWED_BUILD_CONVERTERS = frozenset({"auto", "pandoc", "asciidoctor"})
+_ALLOWED_TRACKING_SCANNERS = frozenset({"auto", "git", "filesystem"})
+_ALLOWED_TRACKING_HASH_ALGORITHMS = frozenset({"sha256"})
+DEFAULT_TRACKING_INCLUDE = (
+    "**/*.py",
+    "**/*.toml",
+    "**/*.md",
+    "**/*.adoc",
+    "**/*.rst",
+    "**/*.j2",
+    "**/*.yaml",
+    "**/*.yml",
+    "**/*.json",
+)
+DEFAULT_TRACKING_EXCLUDE = (
+    ".git/**",
+    ".venv/**",
+    "**/__pycache__/**",
+    ".mypy_cache/**",
+    ".pytest_cache/**",
+    ".ruff_cache/**",
+    "dist/**",
+    "build/**",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,6 +121,13 @@ class ProjectConfig:
     arc42_include_help: bool = False
     skill_installed: bool = False
     skill_path: str = "skills/archledger/SKILL.md"
+    tracking_enabled: bool = True
+    tracking_state_file: str = "source-state.json"
+    tracking_scanner: str = "auto"
+    tracking_include: tuple[str, ...] = DEFAULT_TRACKING_INCLUDE
+    tracking_exclude: tuple[str, ...] = DEFAULT_TRACKING_EXCLUDE
+    tracking_max_file_bytes: int = 1_000_000
+    tracking_hash_algorithm: str = "sha256"
 
 
 def normalize_project_name(name: str) -> str:
@@ -124,7 +164,7 @@ def render_default_config(
         [
             "# Project-local archledger configuration.",
             "# This file lives in the source project root.",
-            "config_version = 4",
+            "config_version = 5",
             f'archledger_dir = "{archledger_dir}"',
             "",
             "# Stable project identity. Commit this with your source tree.",
@@ -156,6 +196,34 @@ def render_default_config(
             "[skill]",
             "installed = true",
             'path = "skills/archledger/SKILL.md"',
+            "",
+            "[tracking]",
+            "enabled = true",
+            'state_file = "source-state.json"',
+            'scanner = "auto"',
+            "include = [",
+            '  "**/*.py",',
+            '  "**/*.toml",',
+            '  "**/*.md",',
+            '  "**/*.adoc",',
+            '  "**/*.rst",',
+            '  "**/*.j2",',
+            '  "**/*.yaml",',
+            '  "**/*.yml",',
+            '  "**/*.json",',
+            "]",
+            "exclude = [",
+            '  ".git/**",',
+            '  ".venv/**",',
+            '  "**/__pycache__/**",',
+            '  ".mypy_cache/**",',
+            '  ".pytest_cache/**",',
+            '  ".ruff_cache/**",',
+            '  "dist/**",',
+            '  "build/**",',
+            "]",
+            "max_file_bytes = 1000000",
+            'hash_algorithm = "sha256"',
             "",
         ]
     )
@@ -199,10 +267,16 @@ def load_project_config(path: Path) -> ProjectConfig:
         _ALLOWED_SKILL_KEYS,
         "skill",
     )
+    tracking_data = _validate_subtable(
+        path,
+        raw_data.get("tracking"),
+        _ALLOWED_TRACKING_KEYS,
+        "tracking",
+    )
 
     config_version = raw_data.get("config_version")
-    if config_version not in {1, 2, 3, 4}:
-        raise ConfigError("config_version must be 1, 2, 3, or 4.")
+    if config_version not in {1, 2, 3, 4, 5}:
+        raise ConfigError("config_version must be 1, 2, 3, 4, or 5.")
 
     archledger_dir = raw_data.get("archledger_dir")
     if not isinstance(archledger_dir, str) or not archledger_dir.strip():
@@ -240,6 +314,15 @@ def load_project_config(path: Path) -> ProjectConfig:
     ) = _parse_build_config(build_data, cast(int, config_version), source_format)
     template_version, language, title, include_help = _parse_arc42_config(arc42_data)
     skill_installed, skill_path = _parse_skill_config(skill_data)
+    (
+        tracking_enabled,
+        tracking_state_file,
+        tracking_scanner,
+        tracking_include,
+        tracking_exclude,
+        tracking_max_file_bytes,
+        tracking_hash_algorithm,
+    ) = _parse_tracking_config(tracking_data)
 
     return ProjectConfig(
         config_version=cast(int, config_version),
@@ -268,6 +351,13 @@ def load_project_config(path: Path) -> ProjectConfig:
         arc42_include_help=include_help,
         skill_installed=skill_installed,
         skill_path=skill_path,
+        tracking_enabled=tracking_enabled,
+        tracking_state_file=tracking_state_file,
+        tracking_scanner=tracking_scanner,
+        tracking_include=tracking_include,
+        tracking_exclude=tracking_exclude,
+        tracking_max_file_bytes=tracking_max_file_bytes,
+        tracking_hash_algorithm=tracking_hash_algorithm,
     )
 
 
@@ -292,8 +382,10 @@ def _parse_source_config(
     source_data: dict[str, object],
     config_version: int,
 ) -> tuple[str, int, str, str, str]:
-    if config_version == 4 and "format" not in source_data:
-        raise ConfigError("source.format is required for config_version 4.")
+    if config_version >= 4 and "format" not in source_data:
+        raise ConfigError(
+            f"source.format is required for config_version {config_version}."
+        )
     source_format_default = "asciidoc" if config_version == 3 else "markdown"
     source_format_value = source_data.get("format", source_format_default)
     if not isinstance(source_format_value, str):
@@ -469,6 +561,50 @@ def _parse_skill_config(skill_data: dict[str, object]) -> tuple[bool, str]:
     return skill_installed, skill_path
 
 
+def _parse_tracking_config(
+    tracking_data: dict[str, object],
+) -> tuple[bool, str, str, tuple[str, ...], tuple[str, ...], int, str]:
+    tracking_enabled = _require_bool(
+        tracking_data.get("enabled", True),
+        "tracking.enabled",
+    )
+    tracking_state_file = _require_non_empty_string(
+        tracking_data.get("state_file", "source-state.json"),
+        "tracking.state_file",
+    )
+    tracking_scanner = _require_choice(
+        tracking_data.get("scanner", "auto"),
+        "tracking.scanner",
+        _ALLOWED_TRACKING_SCANNERS,
+    )
+    tracking_include = _require_string_tuple(
+        tracking_data.get("include", DEFAULT_TRACKING_INCLUDE),
+        "tracking.include",
+    )
+    tracking_exclude = _require_string_tuple(
+        tracking_data.get("exclude", DEFAULT_TRACKING_EXCLUDE),
+        "tracking.exclude",
+    )
+    tracking_max_file_bytes = _require_positive_int(
+        tracking_data.get("max_file_bytes", 1_000_000),
+        "tracking.max_file_bytes",
+    )
+    tracking_hash_algorithm = _require_choice(
+        tracking_data.get("hash_algorithm", "sha256"),
+        "tracking.hash_algorithm",
+        _ALLOWED_TRACKING_HASH_ALGORITHMS,
+    )
+    return (
+        tracking_enabled,
+        tracking_state_file,
+        tracking_scanner,
+        tracking_include,
+        tracking_exclude,
+        tracking_max_file_bytes,
+        tracking_hash_algorithm,
+    )
+
+
 def _normalize_extension(value: object, field_name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ConfigError(f"{field_name} must be a non-empty string.")
@@ -507,6 +643,34 @@ def _require_converter(value: object, field_name: str) -> str:
             + "."
         )
     return normalized
+
+
+def _require_choice(value: object, field_name: str, allowed: frozenset[str]) -> str:
+    if not isinstance(value, str):
+        raise ConfigError(f"{field_name} must be a string.")
+    normalized = value.strip().lower()
+    if normalized not in allowed:
+        raise ConfigError(
+            f"{field_name} must be one of: " + ", ".join(sorted(allowed)) + "."
+        )
+    return normalized
+
+
+def _require_string_tuple(value: object, field_name: str) -> tuple[str, ...]:
+    if not isinstance(value, (list, tuple)):
+        raise ConfigError(f"{field_name} must be a list of strings.")
+    items: list[str] = []
+    for item in value:
+        if not isinstance(item, str) or not item.strip():
+            raise ConfigError(f"{field_name} must contain only non-empty strings.")
+        items.append(item.strip())
+    return tuple(items)
+
+
+def _require_positive_int(value: object, field_name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ConfigError(f"{field_name} must be a positive integer.")
+    return value
 
 
 def _normalize_build_outputs(value: dict[str, object]) -> dict[str, dict[str, object]]:

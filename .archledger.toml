@@ -10,11 +10,11 @@ project_name = "archledger"
 [source]
 format = "markdown"
 front_matter = "yaml"
-section_extension = ".mk"
-record_extension = ".mk"
+section_extension = ".md"
+record_extension = ".md"
 
 [build]
-default_format = "mk"
+default_format = "markdown"
 include_draft = false
 include_superseded = false
 strict = false

@@ -7,6 +7,8 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from archledger.cli import app
+from archledger.storage.paths import resolve_project_paths
+from archledger.storage.source_state import read_source_state
 
 runner = CliRunner()
 
@@ -19,6 +21,96 @@ def test_canonical_config_wins_when_both_exist_and_check_warns(tmp_path: Path) -
 
     assert result.exit_code == 0
     assert "Both archledger.toml and .archledger.toml exist" in result.stdout
+
+
+def test_snapshot_writes_source_state_json(tmp_path: Path) -> None:
+    init_project(tmp_path)
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "module.py").write_text("print('hello')\n", encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        [
+            "--root",
+            str(tmp_path),
+            "--json",
+            "snapshot",
+            "--reason",
+            "after-archledger-update",
+        ],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["result"]["schema"] == "archledger.snapshot.v1"
+    paths, _, _ = resolve_project_paths(tmp_path)
+    state = read_source_state(paths.source_state_path)
+    assert state is not None
+    assert "src/module.py" in state.files
+
+
+def test_changed_json_is_stable_without_baseline(tmp_path: Path) -> None:
+    init_project(tmp_path)
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "module.py").write_text("print('hello')\n", encoding="utf-8")
+
+    result = runner.invoke(app, ["--root", str(tmp_path), "--json", "changed"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["result"]["schema"] == "archledger.changed.v1"
+    assert payload["result"]["baseline"]["exists"] is False
+    assert "src/module.py" in payload["result"]["changes"]["unbaselined_files"]
+
+
+def test_changed_json_reports_modified_file_and_impacted_record(tmp_path: Path) -> None:
+    init_project(tmp_path)
+    (tmp_path / "src").mkdir()
+    source_path = tmp_path / "src" / "module.py"
+    source_path.write_text("print('v1')\n", encoding="utf-8")
+    runner.invoke(
+        app,
+        [
+            "--root",
+            str(tmp_path),
+            "new",
+            "white-box",
+            "--title",
+            "Tracking layer",
+            "--status",
+            "proposed",
+        ],
+    )
+    record_path = (
+        tmp_path / ".archledger" / "records" / "building_blocks" / "white_box_0001.adoc"
+    )
+    record_path.write_text(
+        record_path.read_text(encoding="utf-8").replace(
+            "\n---\n\n",
+            "\nsource_refs:\n  - src/module.py#module\n---\n\n",
+            1,
+        ),
+        encoding="utf-8",
+    )
+    snapshot_result = runner.invoke(
+        app,
+        ["--root", str(tmp_path), "--json", "snapshot", "--reason", "baseline"],
+    )
+    assert snapshot_result.exit_code == 0
+
+    source_path.write_text("print('v2')\n", encoding="utf-8")
+    result = runner.invoke(
+        app,
+        ["--root", str(tmp_path), "--json", "changed", "--include-draft"],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)["result"]
+    assert payload["baseline"]["exists"] is True
+    assert payload["changes"]["modified"][0]["path"] == "src/module.py"
+    assert payload["impact"]["records"][0]["id"] == "white_box_0001"
+    assert payload["impact"]["records"][0]["matched_refs"] == ["src/module.py"]
+    assert "building_block_view" in payload["impact"]["sections"]
 
 
 def test_new_black_box_creates_black_box_0001(tmp_path: Path) -> None:
@@ -491,6 +583,35 @@ def test_check_strict_fails_on_new_content_warning(tmp_path: Path) -> None:
     payload = json.loads(result.stdout)
     messages = [item["message"] for item in payload["error"]["details"]["warnings"]]
     assert "Context interface context_interface_0001 has no partner." in messages
+
+
+def test_check_warns_for_invalid_source_ref_path_traversal(tmp_path: Path) -> None:
+    init_project(tmp_path)
+    runner.invoke(
+        app,
+        ["--root", str(tmp_path), "new", "white-box", "--title", "Tracking layer"],
+    )
+    record_path = (
+        tmp_path / ".archledger" / "records" / "building_blocks" / "white_box_0001.adoc"
+    )
+    record_path.write_text(
+        record_path.read_text(encoding="utf-8").replace(
+            "\n---\n\n",
+            "\nsource_refs:\n  - ../secret.py\n---\n\n",
+            1,
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(app, ["--root", str(tmp_path), "--json", "check"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    messages = [item["message"] for item in payload["result"]["warnings"]]
+    assert (
+        "Record white_box_0001 source_refs entry 1 path must not contain '..': ../secret.py"
+        in messages
+    )
 
 
 def test_list_excludes_draft_by_default(tmp_path: Path) -> None:
