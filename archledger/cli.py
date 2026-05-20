@@ -12,7 +12,7 @@ import yaml
 from archledger import __version__
 from archledger.errors import ArchledgerError
 from archledger.migration import convert_sources
-from archledger.model import ArchitectureRecord
+from archledger.model import ArchitectureRecord, is_visible_status, normalize_kind
 from archledger.render import build_document
 from archledger.repository import (
     ArchitectureRepository,
@@ -106,6 +106,13 @@ def init(
             help="Stable project identity stored in archledger.toml.",
         ),
     ] = None,
+    source_format: Annotated[
+        str,
+        typer.Option(
+            "--source-format",
+            help="Canonical source dialect for new project fragments.",
+        ),
+    ] = "asciidoc",
 ) -> None:
     state = _state(ctx)
     workspace_root = state.root.resolve()
@@ -120,6 +127,7 @@ def init(
         config_text = render_default_config(
             workspace_root,
             archledger_dir=archledger_dir,
+            source_format=source_format,
             project_name=project_name,
         )
         write_text(config_path, config_text)
@@ -333,6 +341,73 @@ def show(
         }
 
     _run_configured_command(state, "show", build_result, _format_show_message)
+
+
+@app.command()
+def read(
+    ctx: typer.Context,
+    include_body: Annotated[bool, typer.Option("--include-body")] = False,
+    include_draft: Annotated[bool, typer.Option("--include-draft")] = False,
+    include_superseded: Annotated[bool, typer.Option("--include-superseded")] = False,
+    section: Annotated[str | None, typer.Option("--section")] = None,
+    kind: Annotated[str | None, typer.Option("--kind")] = None,
+) -> None:
+    state = _state(ctx)
+
+    def build_result(
+        repo: ArchitectureRepository,
+        paths: ProjectPaths,
+        config: ProjectConfig,
+    ) -> dict[str, object]:
+        normalized_kind = None
+        if kind is not None:
+            normalized_kind = "section" if kind.strip().lower() == "section" else normalize_kind(kind)
+        records = []
+        for record in repo.load_all_records(include_sections=True):
+            if record.type != "section" and not is_visible_status(
+                record.status,
+                include_draft=include_draft,
+                include_superseded=include_superseded,
+            ):
+                continue
+            if section is not None and record.section != section:
+                continue
+            if normalized_kind is not None and record.type != normalized_kind:
+                continue
+            item: dict[str, object] = {
+                "id": record.id,
+                "type": record.type,
+                "title": record.title,
+                "status": record.status,
+                "section": record.section,
+                "order": record.order,
+                "path": _display_path(paths.workspace_root, record.path),
+                "body_format": record.metadata.get("body_format", config.source_format),
+                "metadata": record.metadata,
+            }
+            if include_body:
+                item["body"] = record.body
+            records.append(item)
+        return {
+            "schema": "archledger.read.v1",
+            "project": {
+                "name": config.project_name,
+                "uuid": config.project_uuid,
+                "source_format": config.source_format,
+                "source_schema_version": config.source_schema_version,
+                "arc42_template_version": config.arc42_template_version,
+            },
+            "paths": {
+                "workspace_root": str(paths.workspace_root),
+                "config_path": str(paths.config_path),
+                "archledger_dir": str(paths.archledger_dir),
+                "sections_dir": str(paths.sections_dir),
+                "records_dir": str(paths.records_dir),
+            },
+            "records": records,
+        }
+
+    _run_configured_command(state, "read", build_result, _format_read_message)
 
 
 @app.command()
@@ -582,6 +657,17 @@ def _format_show_message(payload: dict[str, object]) -> str:
     return document
 
 
+def _format_read_message(payload: dict[str, object]) -> str:
+    records = payload.get("records")
+    project = payload.get("project")
+    if not isinstance(records, list) or not isinstance(project, dict):
+        raise RuntimeError("Read payload was malformed.")
+    return (
+        f"Read {len(records)} source fragment(s) from "
+        f"{project.get('name', 'unknown-project')}."
+    )
+
+
 def _format_check_message(payload: dict[str, object]) -> str:
     error_messages = payload["errors"]
     warning_messages = payload["warnings"]
@@ -706,6 +792,13 @@ def _finding_payload(finding: CheckFinding) -> dict[str, object]:
     if finding.path is not None:
         payload["path"] = str(finding.path)
     return payload
+
+
+def _display_path(workspace_root: Path, path: Path) -> str:
+    try:
+        return str(path.relative_to(workspace_root))
+    except ValueError:
+        return str(path)
 
 
 def _check_error(result: CheckResult, *, strict: bool) -> ArchledgerError:

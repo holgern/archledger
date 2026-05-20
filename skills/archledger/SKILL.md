@@ -1,6 +1,6 @@
 ---
 name: archledger
-description: Fill and maintain AsciiDoc-backed arc42 architecture documentation with YAML front matter, explicit migration, validation, and multi-format builds.
+description: Fill and maintain Markdown- or AsciiDoc-backed arc42 architecture documentation with YAML front matter, direct source reading, validation, and optional exports.
 license: Apache-2.0
 compatibility: opencode,codex,chatgpt
 metadata: architecture-documentation,arc42,coding-agents
@@ -10,121 +10,69 @@ metadata: architecture-documentation,arc42,coding-agents
 
 ## When to use this skill
 
-Use this skill when a coding agent needs to create, enrich, repair, migrate, or build architecture documentation for a software repository with `archledger`. The target output is a complete arc42-style architecture artifact assembled from human-editable source fragments whose canonical format is YAML front matter plus AsciiDoc body content.
+Use this skill when a coding agent needs to create, inspect, enrich, repair, or validate architecture documentation managed by `archledger`.
 
-Typical triggers:
+`archledger` is a dual-source ledger:
 
-- The user asks for architecture documentation, arc42, ADRs, building block views, context views, quality scenarios, risks, or glossary entries.
-- The repository contains `archledger.toml`, `.archledger.toml`, `.archledger/`, or an external configured `archledger_dir`.
-- The user asks an agent to fill architecture documentation from code, tests, README files, package metadata, deployment files, or existing design notes.
+- Markdown and AsciiDoc are both first-class source formats.
+- The source fragments under the configured `archledger_dir` are the source of truth.
+- `.archledger/build/*` is derived output only.
+- Native same-format builds require no external converters.
 
 ## Never do these things
 
-- Do not edit generated build output as the canonical source. Update section files and record files instead.
+- Do not edit generated build output as canonical source.
+- Do not require `archledger build` before understanding the current documentation state.
+- Do not describe Markdown projects as legacy unless the user explicitly asks about an older migration path.
+- Do not migrate source dialects unless the user explicitly asks for `convert-sources`.
+- Do not invent architecture facts without repository evidence.
 - Do not leave placeholder bodies in accepted records.
-- Do not invent external systems, compliance constraints, stakeholders, or production deployments without evidence. Mark uncertain items as `draft` or `proposed` and record the assumption in the body.
-- Do not treat every source file as a building block. Prefer architecturally relevant modules, boundaries, interfaces, runtime flows, and decisions.
-- Do not bypass `archledger check` before a build.
-- Do not delete existing records just because they look stale. Deprecate or supersede them unless the user explicitly requests deletion.
-- Do not commit `.archledger/` by default. The project config is the commit-safe source pointer; the storage directory may be ignored or external.
 
 ## Fresh-context entry protocol
 
-1. Locate the project root and config.
+Read current source state directly first:
 
-   ```bash
-   archledger --json where
-   archledger --json status
-   ```
+```bash
+archledger --json where
+archledger --json status
+archledger --json check
+archledger --json read --include-body --include-draft
+```
 
-2. Inspect current records.
+Then:
 
-   ```bash
-   archledger --json list --include-draft
-   archledger --json check
-   ```
+1. Treat the returned source fragments as the current architecture truth.
+2. Use generated exports only as disposable deliverables.
+3. Use `archledger build --format markdown` or `archledger build --format asciidoc` for native validation.
+4. Do not read `.archledger/build/*` as source of truth.
 
-3. If storage is missing, initialize it only when the user asked to create architecture documentation for this workspace.
+If storage is missing and the user asked to create architecture docs in this repository:
 
-   ```bash
-   archledger init
-   ```
+```bash
+archledger init --source-format markdown
+# or
+archledger init --source-format asciidoc
+```
 
-4. If the user wants a starter set, bootstrap it explicitly:
+If the user wants starter content:
 
-   ```bash
-   archledger seed arc42-minimal
-   ```
-
-5. Inspect repository evidence before writing content. Use README, package metadata, source tree, tests, deployment files, CI, docs, and existing ADRs/design notes.
-
-6. Create or update records in small batches. Prefer accepted records only when the evidence is strong; use proposed/draft for assumptions.
-
-7. Run validation and build.
-
-   ```bash
-   archledger check
-   archledger build --format asciidoc
-   ```
-
-## Minimum arc42 fill set
-
-A useful first artifact should contain at least:
-
-1. Introduction and Goals
-   - Requirement records plus short section prose.
-   - Three to five quality goals with concrete scenarios.
-   - Stakeholders and expectations.
-2. Architecture Constraints
-   - Technical, organizational, regulatory, and convention constraints.
-3. Context and Scope
-   - Business context partners and domain input/output.
-   - Technical context channels/protocols and input/output mapping.
-4. Solution Strategy
-   - Section prose plus strategy items that connect drivers, constraints, and ADRs.
-5. Building Block View
-   - One white box for the overall system.
-   - Architecturally relevant black boxes.
-   - Important interfaces.
-6. Runtime View
-   - Representative scenarios: primary happy path, critical error path, startup/build path, or sync/import/export path.
-7. Deployment View
-   - Development, local, CI, and production assumptions only when supported by evidence.
-8. Cross-cutting Concepts
-   - Only concepts that actually matter for this system, such as configuration, storage, validation, rendering, versioning, security, logging, or error handling.
-9. Architecture Decisions
-   - ADRs for decisions with persistent consequences.
-10. Quality Requirements
-
-    - Quality requirement overview records plus detailed quality scenarios with source, stimulus, environment, artifact, response, and response measure.
-
-11. Risks and Technical Debt
-
-   - Risks with severity, probability, mitigation, and evidence.
-
-12. Glossary
-
-   - Domain and technical terms needed by stakeholders.
+```bash
+archledger seed arc42-minimal
+```
 
 ## Record authoring protocol
 
-Use the CLI to allocate ids and paths, then edit the generated `.adoc` source fragment.
+Use the CLI to allocate ids and paths, then edit the generated source fragment whose dialect matches `source.format`.
 
 ```bash
-archledger new requirement --title "Render architecture document from AsciiDoc records" --status proposed
+archledger new requirement --title "Render architecture document from source fragments" --status proposed
 archledger new white-box --title "Overall System" --status proposed
 archledger new black-box --title "CLI" --parent white_box_0001 --status proposed
-archledger new strategy-item --title "Keep records as canonical source" --status proposed
-archledger new adr --title "Use AsciiDoc fragments with YAML front matter" --status proposed
-archledger new quality-requirement --title "Deterministic builds" --status proposed
-archledger new context-interface --title "GitHub" --context-kind business --partner GitHub --status proposed
-archledger new infrastructure --title "Local CLI runtime" --environment development --status proposed
-archledger new quality-scenario --title "Deterministic build" --quality reproducibility --environment ci --status proposed
+archledger new adr --title "Treat source fragments as canonical" --status proposed
+archledger new quality-requirement --title "Deterministic native builds" --status proposed
 ```
 
-Every record must keep YAML front matter at the top, delimited by `---`, followed by rich AsciiDoc. Treat front matter as machine-readable indexing data and the AsciiDoc body as the human architecture explanation.
-
-Common fields:
+Every section file and record file must keep YAML front matter followed by a body in the configured dialect. Common metadata:
 
 ```yaml
 schema_version: 2
@@ -134,93 +82,65 @@ title: "CLI"
 status: proposed
 section: building_block_view
 order: 10
-parent: white_box_0001
-level: 1
-body_format: asciidoc
-tags: []
-created_at: "2026-05-19T00:00:00Z"
-updated_at: "2026-05-19T00:00:00Z"
+date: "2026-05-20"
+body_format: markdown
+created_at: "2026-05-20T00:00:00Z"
+updated_at: "2026-05-20T00:00:00Z"
 ```
 
-Status rules:
+`body_format` must match the project source format (`markdown` or `asciidoc`).
 
-- `draft`: incomplete, not included by default.
-- `proposed`: usable but not formally accepted.
-- `accepted`: confirmed and included by default.
-- `deprecated`: still visible by default, but no longer preferred.
-- `superseded`: hidden unless explicitly included.
+## Reading and editing rules
 
-## Evidence rules for filling content
+- Prefer `archledger --json read --include-body` over `archledger build` when you need the current architecture state.
+- Read the repository evidence before writing documentation: README, tests, package metadata, CI, deployment files, and design notes.
+- Update section files and record files directly; never patch generated complete documents as the source of truth.
+- Keep assumptions explicit and use `draft` or `proposed` when evidence is incomplete.
 
-When deriving architecture from code:
+## Build and export matrix
 
-- Use import boundaries and package layout to suggest building blocks.
-- Use CLI commands, public APIs, and storage adapters as interfaces.
-- Use tests to infer supported behavior and acceptance rules.
-- Use configuration files for constraints and deployment assumptions.
-- Use README/docs for user-facing goals and workflow claims.
-- Use error classes and validation logic to identify risks, quality requirements, and operational behavior.
+Native no-tool builds:
 
-Mark assumptions explicitly:
-
-```adoc
-[discrete]
-=== Evidence
-
-- `pyproject.toml` declares the `archledger` console script.
-- `archledger/assembly.py` assembles the canonical architecture document.
-
-[discrete]
-=== Assumptions
-
-- Production usage is local CLI execution until deployment evidence exists.
+```bash
+archledger build --format markdown
+archledger build --format asciidoc
 ```
+
+Optional exports:
+
+- Markdown source -> HTML, DOCX, RST, Textile, PDF, and AsciiDoc through `pandoc`
+- AsciiDoc source -> HTML through `asciidoctor`
+- AsciiDoc source -> PDF through `asciidoctor-pdf`
+- AsciiDoc source -> DOCX, Markdown, RST, and Textile through Asciidoctor DocBook + `pandoc`
 
 ## Validation protocol
 
-Before finalizing:
+Before finalizing changes:
 
 ```bash
 archledger check
+archledger build --format markdown
 archledger build --format asciidoc
-archledger build --format html
 python -m pytest -q
 ```
+
+Choose the native build that matches the project source format. Use optional export builds only when the user asked for those artifacts or when validating converter-backed formats.
 
 For automation, prefer JSON:
 
 ```bash
 archledger --json check
+archledger --json read --include-body
 archledger --json build --formats html,markdown
 ```
 
-A record is not done until:
-
-- Its body is not placeholder text.
-- Required front matter is valid.
-- Parent references resolve.
-- The record is in the correct arc42 section.
-- `archledger check` has no errors.
-- Strict warnings are either fixed or intentionally left as proposed/draft work.
-
-## Migration and export rules
-
-- Treat Markdown source projects as legacy inputs. Use `archledger convert-sources --to asciidoc --write` before expecting canonical AsciiDoc assembly or export formats.
-- Do not hand-edit generated `.archledger/build/*` outputs.
-- `archledger build --format asciidoc` is the dependency-free canonical build for AsciiDoc-backed projects.
-- HTML export requires `asciidoctor`.
-- PDF export requires `asciidoctor-pdf`.
-- DOCX, Markdown, reStructuredText, and Textile export require `pandoc`.
-
 ## Content quality bar
 
-Good archledger content is concrete, traceable, and concise. Each item should answer:
+Good archledger content is concrete, traceable, and concise:
 
-- What exists?
-- Why does it exist?
-- Which source evidence supports it?
-- Which stakeholder cares?
-- Which quality goal, constraint, decision, or risk does it affect?
+- what exists
+- why it exists
+- which repository evidence supports it
+- which stakeholder, quality goal, constraint, decision, or risk it affects
 
-Avoid generic architecture filler. Prefer one precise paragraph over a broad
-buzzword list.
+Avoid generic filler. Prefer precise source-backed statements over broad architecture boilerplate.

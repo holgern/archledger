@@ -74,8 +74,8 @@ def test_build_html_requires_asciidoctor(
     result = runner.invoke(app, ["--root", str(tmp_path), "build", "--format", "html"])
 
     assert result.exit_code == 1
-    assert "Cannot build html" in result.stderr
-    assert "asciidoctor executable was not found" in result.stderr
+    assert "Cannot build html" in result.output
+    assert "asciidoctor executable was not found" in result.output
 
 
 def test_build_pdf_requires_asciidoctor_pdf(
@@ -88,8 +88,8 @@ def test_build_pdf_requires_asciidoctor_pdf(
     result = runner.invoke(app, ["--root", str(tmp_path), "build", "--format", "pdf"])
 
     assert result.exit_code == 1
-    assert "Cannot build pdf" in result.stderr
-    assert "asciidoctor-pdf executable was not found" in result.stderr
+    assert "Cannot build pdf" in result.output
+    assert "asciidoctor-pdf executable was not found" in result.output
 
 
 def test_pandoc_backed_format_requires_asciidoctor(
@@ -108,8 +108,8 @@ def test_pandoc_backed_format_requires_asciidoctor(
     result = runner.invoke(app, ["--root", str(tmp_path), "build", "--format", "rst"])
 
     assert result.exit_code == 1
-    assert "Cannot build rst" in result.stderr
-    assert "asciidoctor executable was not found" in result.stderr
+    assert "Cannot build rst" in result.output
+    assert "asciidoctor executable was not found" in result.output
 
 
 def test_build_docx_requires_pandoc(
@@ -128,8 +128,8 @@ def test_build_docx_requires_pandoc(
     result = runner.invoke(app, ["--root", str(tmp_path), "build", "--format", "docx"])
 
     assert result.exit_code == 1
-    assert "Cannot build docx" in result.stderr
-    assert "pandoc executable was not found" in result.stderr
+    assert "Cannot build docx" in result.output
+    assert "pandoc executable was not found" in result.output
 
 
 @pytest.mark.parametrize(
@@ -219,11 +219,133 @@ def test_json_build_reports_multiple_outputs(
 
 
 def init_project(tmp_path: Path) -> None:
-    result = runner.invoke(app, ["--root", str(tmp_path), "init"])
+    init_project_with_format(tmp_path)
+ 
+ 
+def init_project_with_format(tmp_path: Path, source_format: str = "asciidoc") -> None:
+    result = runner.invoke(
+        app,
+        ["--root", str(tmp_path), "init", "--source-format", source_format],
+    )
     assert result.exit_code == 0
 
 
 def _fake_which(name: str) -> str | None:
-    if name in {"asciidoctor", "pandoc"}:
+    if name in {"asciidoctor", "asciidoctor-pdf", "pandoc"}:
         return f"/usr/bin/{name}"
     return None
+
+
+def test_markdown_source_markdown_build_requires_no_tools(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    init_project_with_format(tmp_path, "markdown")
+    monkeypatch.setattr("archledger.converters.shutil.which", lambda name: None)
+
+    def fail_run(*args: object, **kwargs: object) -> None:
+        raise AssertionError("native markdown build should not invoke converters")
+
+    monkeypatch.setattr("archledger.converters.subprocess.run", fail_run)
+
+    result = runner.invoke(app, ["--root", str(tmp_path), "build", "--format", "markdown"])
+
+    assert result.exit_code == 0
+    assert (tmp_path / ".archledger" / "build" / "architecture.md").is_file()
+
+
+def test_asciidoc_source_asciidoc_build_requires_no_tools(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    init_project_with_format(tmp_path, "asciidoc")
+    monkeypatch.setattr("archledger.converters.shutil.which", lambda name: None)
+
+    def fail_run(*args: object, **kwargs: object) -> None:
+        raise AssertionError("native asciidoc build should not invoke converters")
+
+    monkeypatch.setattr("archledger.converters.subprocess.run", fail_run)
+
+    result = runner.invoke(app, ["--root", str(tmp_path), "build", "--format", "asciidoc"])
+
+    assert result.exit_code == 0
+    assert (tmp_path / ".archledger" / "build" / "architecture.adoc").is_file()
+
+
+@pytest.mark.parametrize(
+    ("requested_format", "pandoc_target"),
+    [
+        ("html", "html5"),
+        ("docx", "docx"),
+        ("rst", "rst"),
+        ("textile", "textile"),
+    ],
+)
+def test_markdown_source_pandoc_backed_formats_use_pandoc(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    requested_format: str,
+    pandoc_target: str,
+) -> None:
+    init_project_with_format(tmp_path, "markdown")
+    monkeypatch.setattr("archledger.converters.shutil.which", _fake_which)
+
+    captured: list[list[str]] = []
+
+    def fake_run(
+        command: list[str],
+        *,
+        check: bool,
+        capture_output: bool,
+        text: bool,
+    ) -> subprocess.CompletedProcess[str]:
+        del check, capture_output, text
+        captured.append(command)
+        output_index = command.index("-o") + 1
+        output_path = Path(command[output_index])
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text("converted", encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr("archledger.converters.subprocess.run", fake_run)
+
+    result = runner.invoke(
+        app,
+        ["--root", str(tmp_path), "build", "--format", requested_format],
+    )
+
+    assert result.exit_code == 0
+    assert captured[0][:5] == ["/usr/bin/pandoc", "-f", "gfm", "-t", pandoc_target]
+
+
+def test_markdown_source_pdf_uses_pandoc(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    init_project_with_format(tmp_path, "markdown")
+    monkeypatch.setattr("archledger.converters.shutil.which", _fake_which)
+
+    captured: list[list[str]] = []
+
+    def fake_run(
+        command: list[str],
+        *,
+        check: bool,
+        capture_output: bool,
+        text: bool,
+    ) -> subprocess.CompletedProcess[str]:
+        del check, capture_output, text
+        captured.append(command)
+        output_index = command.index("-o") + 1
+        output_path = Path(command[output_index])
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text("converted", encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr("archledger.converters.subprocess.run", fake_run)
+
+    result = runner.invoke(app, ["--root", str(tmp_path), "build", "--format", "pdf"])
+
+    assert result.exit_code == 0
+    assert captured[0][0:3] == ["/usr/bin/pandoc", "-f", "gfm"]
+    assert str(tmp_path / ".archledger" / "build" / "architecture.md") in captured[0]

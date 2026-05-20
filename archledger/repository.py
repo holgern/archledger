@@ -10,16 +10,20 @@ from jinja2 import Environment, PackageLoader, select_autoescape
 from archledger import __version__
 from archledger.errors import StorageError, ValidationError
 from archledger.model import (
+    CURRENT_SOURCE_SCHEMA_VERSION,
     MAJOR_SECTION_SPECS,
     PLACEHOLDER_SNIPPETS,
     RECORD_TYPE_TO_DEFAULT_SECTION,
     RECORD_TYPE_TO_DIR,
     RECORD_TYPE_TO_FILENAME_PREFIX,
     REQUIRED_RECORD_FIELDS,
+    VALID_BODY_FORMATS,
     ArchitectureRecord,
     SectionSpec,
+    default_extension_for_source_format,
     filename_for,
     is_visible_status,
+    section_body_placeholder_for_source_format,
     normalize_kind,
     record_sort_key,
     record_template_name_for_source_format,
@@ -101,6 +105,7 @@ class ArchitectureRepository:
 
     def init(self, *, overwrite: bool = False) -> InitResult:
         created_paths: list[Path] = []
+        created_at = utc_now_iso()
         for path in (
             self.paths.archledger_dir,
             self.paths.sections_dir,
@@ -125,7 +130,12 @@ class ArchitectureRepository:
             if not section_path.exists() or overwrite:
                 write_text(
                     section_path,
-                    _section_document(section_spec, self.config.source_format),
+                    _section_document(
+                        section_spec,
+                        self.config.source_format,
+                        source_schema_version=self.config.source_schema_version,
+                        created_at=created_at,
+                    ),
                 )
                 created_paths.append(section_path)
 
@@ -277,6 +287,13 @@ class ArchitectureRepository:
             issues = validate_record(record)
             for issue in issues:
                 findings_errors.append(CheckFinding("error", issue, path))
+            source_errors, source_warnings = self._source_contract_findings(record)
+            findings_errors.extend(
+                CheckFinding("error", message, path) for message in source_errors
+            )
+            findings_warnings.extend(
+                CheckFinding("warning", message, path) for message in source_warnings
+            )
 
             loaded_records.append(record)
             warning_message = self._placeholder_warning(record)
@@ -390,6 +407,7 @@ class ArchitectureRepository:
         section = kwargs.get("section") or RECORD_TYPE_TO_DEFAULT_SECTION[kind]
         parent = kwargs.get("parent")
         context: dict[str, object] = {
+            "schema_version": self.config.source_schema_version,
             "id": target_path.stem,
             "type": kind,
             "title": title,
@@ -399,6 +417,7 @@ class ArchitectureRepository:
             "created_at": created_at,
             "updated_at": created_at,
             "date": created_at[:10],
+            "body_format": self.config.source_format,
             "parent": "null" if parent in (None, "") else parent,
             "level": kwargs.get("level", 1),
         }
@@ -574,36 +593,115 @@ class ArchitectureRepository:
 
     def _content_warnings(self, record: ArchitectureRecord) -> list[str]:
         checker = _CONTENT_WARNING_CHECKERS.get(record.type)
-        if checker is None:
+        warnings = [] if checker is None else checker(record)
+        warnings.extend(self._body_syntax_warnings(record))
+        return warnings
+
+    def _source_contract_findings(
+        self,
+        record: ArchitectureRecord,
+    ) -> tuple[list[str], list[str]]:
+        errors: list[str] = []
+        warnings: list[str] = []
+        source_format = self.config.source_format
+        config_version = self.config.config_version
+        schema_version = record.metadata.get("schema_version")
+        body_format = record.metadata.get("body_format")
+        date = record.metadata.get("date")
+
+        if schema_version is None:
+            if config_version >= 4:
+                errors.append(f"Record {record.id} is missing schema_version.")
+        elif isinstance(schema_version, bool) or not isinstance(schema_version, int):
+            errors.append(f"Record {record.id} schema_version must be an integer.")
+        elif schema_version != self.config.source_schema_version:
+            message = (
+                f"Record {record.id} schema_version {schema_version} does not match "
+                f"source.schema_version {self.config.source_schema_version}."
+            )
+            if config_version >= 4:
+                errors.append(message)
+            else:
+                warnings.append(message)
+
+        if date is None:
+            if config_version >= 4:
+                errors.append(f"Record {record.id} is missing date.")
+        elif not isinstance(date, str) or not date.strip():
+            errors.append(f"Record {record.id} date must be a non-empty string.")
+
+        if body_format is None:
+            if config_version >= 4:
+                errors.append(f"Record {record.id} is missing body_format.")
+        elif not isinstance(body_format, str):
+            errors.append(f"Record {record.id} body_format must be a string.")
+        else:
+            normalized_body_format = body_format.strip().lower()
+            if normalized_body_format not in VALID_BODY_FORMATS:
+                errors.append(
+                    f"Record {record.id} body_format must be one of: "
+                    + ", ".join(sorted(VALID_BODY_FORMATS))
+                    + "."
+                )
+            elif normalized_body_format != source_format:
+                message = (
+                    f"Record {record.id} body_format {normalized_body_format!r} does "
+                    f"not match source format {source_format!r}."
+                )
+                if config_version >= 4:
+                    errors.append(message)
+                else:
+                    warnings.append(message)
+
+        return errors, warnings
+
+    def _body_syntax_warnings(self, record: ArchitectureRecord) -> list[str]:
+        body_format_value = record.metadata.get("body_format", self.config.source_format)
+        if not isinstance(body_format_value, str):
             return []
-        return checker(record)
+        body_format = body_format_value.strip().lower()
+        if body_format == "markdown":
+            if "[discrete]" in record.body and "\n===" in record.body:
+                return [
+                    f"Markdown record {record.id} contains AsciiDoc-style discrete headings."
+                ]
+            return []
+        if body_format == "asciidoc":
+            if any(
+                line.startswith("## ")
+                for line in record.body.splitlines()
+                if not line.startswith("```")
+            ):
+                return [f"AsciiDoc record {record.id} contains Markdown headings."]
+        return []
 
 
-def _section_document(section_spec: SectionSpec, source_format: str) -> str:
+def _section_document(
+    section_spec: SectionSpec,
+    source_format: str,
+    *,
+    source_schema_version: int = CURRENT_SOURCE_SCHEMA_VERSION,
+    created_at: str | None = None,
+) -> str:
+    timestamp = utc_now_iso() if created_at is None else created_at
     lines = [
         "---",
+        f"schema_version: {source_schema_version}",
         f"id: section_{section_spec.key}",
         "type: section",
         f"section: {section_spec.key}",
         f"title: {section_spec.title}",
         f"order: {section_spec.order}",
         "status: accepted",
+        f'date: "{timestamp[:10]}"',
+        f"body_format: {source_format}",
+        f'created_at: "{timestamp}"',
+        f'updated_at: "{timestamp}"',
+        "---",
+        "",
+        section_body_placeholder_for_source_format(source_format),
+        "",
     ]
-    if source_format == "asciidoc":
-        lines.extend(
-            [
-                "schema_version: 2",
-                "body_format: asciidoc",
-            ]
-        )
-    lines.extend(
-        [
-            "---",
-            "",
-            "<!-- archledger: add section-level prose here -->",
-            "",
-        ]
-    )
     return "\n".join(lines)
 
 

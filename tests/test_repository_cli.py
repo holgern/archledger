@@ -592,7 +592,8 @@ def test_new_legacy_v2_project_keeps_markdown_template(tmp_path: Path) -> None:
     created = (
         tmp_path / ".archledger" / "records" / "requirements" / "requirement_0001.md"
     ).read_text(encoding="utf-8")
-    assert "body_format: asciidoc" not in created
+    assert "body_format: markdown" in created
+    assert "schema_version: 2" in created
     assert "## Requirement" in created
 
 

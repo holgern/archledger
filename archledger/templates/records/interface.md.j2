@@ -1,4 +1,5 @@
 ---
+schema_version: 2
 id: {{ id }}
 type: interface
 title: {{ title | tojson }}
@@ -6,9 +7,13 @@ status: {{ status }}
 section: {{ section }}
 parent: {{ parent | default('null') }}
 order: {{ order }}
+date: {{ date | tojson }}
 providers: []
 consumers: []
 protocol: ""
+body_format: markdown
+created_at: {{ created_at | tojson }}
+updated_at: {{ updated_at | tojson }}
 ---
 
 Describe the syntax, semantics, and failure cases of this interface.

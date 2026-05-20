@@ -1,15 +1,20 @@
 ---
+schema_version: 2
 id: {{ id }}
 type: context_interface
 title: {{ title | tojson }}
 status: {{ status }}
 section: {{ section }}
 order: {{ order }}
+date: {{ date | tojson }}
 context_kind: {{ context_kind | tojson }}
 partner: {{ partner | tojson }}
 inputs: []
 outputs: []
 channels: []
+body_format: markdown
+created_at: {{ created_at | tojson }}
+updated_at: {{ updated_at | tojson }}
 ---
 
 Describe this context interface.

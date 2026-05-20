@@ -9,11 +9,13 @@ from uuid import UUID, uuid4
 
 from archledger.errors import ConfigError
 from archledger.model import (
+    CURRENT_SOURCE_SCHEMA_VERSION,
     VALID_OUTPUT_FORMATS,
     VALID_SOURCE_FORMATS,
     default_document_filename_for_output_format,
     default_extension_for_source_format,
     infer_output_format_from_path,
+    native_output_format_for_source_format,
 )
 from archledger.storage.common import read_text
 
@@ -41,6 +43,8 @@ _ALLOWED_BUILD_KEYS = {
     "include_superseded",
     "strict",
     "keep_intermediate",
+    "converter",
+    "pdf_engine",
     "reference_docx",
     "outputs",
 }
@@ -51,7 +55,9 @@ _ALLOWED_SOURCE_KEYS = {
     "front_matter",
     "section_extension",
     "record_extension",
+    "schema_version",
 }
+_ALLOWED_BUILD_CONVERTERS = frozenset({"auto", "pandoc", "asciidoctor"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,6 +67,7 @@ class ProjectConfig:
     project_uuid: str
     project_name: str
     source_format: str = "markdown"
+    source_schema_version: int = CURRENT_SOURCE_SCHEMA_VERSION
     front_matter: str = "yaml"
     section_extension: str = ".md"
     record_extension: str = ".md"
@@ -71,6 +78,8 @@ class ProjectConfig:
     build_include_superseded: bool = False
     build_strict: bool = False
     build_keep_intermediate: bool = False
+    build_converter: str = "auto"
+    build_pdf_engine: str = ""
     build_reference_docx: str = ""
     build_outputs: dict[str, dict[str, object]] = field(default_factory=dict)
     arc42_template_version: str = "9.0-EN"
@@ -92,9 +101,19 @@ def render_default_config(
     workspace_root: Path,
     *,
     archledger_dir: str,
+    source_format: str = "asciidoc",
     project_name: str | None = None,
     project_uuid: str | None = None,
 ) -> str:
+    normalized_source_format = source_format.strip().lower()
+    if normalized_source_format not in VALID_SOURCE_FORMATS:
+        raise ConfigError(
+            "source_format must be one of: "
+            + ", ".join(sorted(VALID_SOURCE_FORMATS))
+            + "."
+        )
+    default_extension = default_extension_for_source_format(normalized_source_format)
+    default_format = native_output_format_for_source_format(normalized_source_format)
     normalized_project_name = normalize_project_name(
         workspace_root.name if project_name is None else project_name
     )
@@ -105,7 +124,7 @@ def render_default_config(
         [
             "# Project-local archledger configuration.",
             "# This file lives in the source project root.",
-            "config_version = 3",
+            "config_version = 4",
             f'archledger_dir = "{archledger_dir}"',
             "",
             "# Stable project identity. Commit this with your source tree.",
@@ -113,16 +132,20 @@ def render_default_config(
             f'project_name = "{normalized_project_name}"',
             "",
             "[source]",
-            'format = "asciidoc"',
+            f'format = "{normalized_source_format}"',
             'front_matter = "yaml"',
-            'section_extension = ".adoc"',
-            'record_extension = ".adoc"',
+            f'section_extension = "{default_extension}"',
+            f'record_extension = "{default_extension}"',
+            f"schema_version = {CURRENT_SOURCE_SCHEMA_VERSION}",
             "",
             "[build]",
-            'default_format = "asciidoc"',
+            f'default_format = "{default_format}"',
+            'default_output_dir = "build"',
             "include_draft = false",
             "include_superseded = false",
             "strict = false",
+            "keep_intermediate = false",
+            'converter = "auto"',
             "",
             "[arc42]",
             'template_version = "9.0-EN"',
@@ -178,8 +201,8 @@ def load_project_config(path: Path) -> ProjectConfig:
     )
 
     config_version = raw_data.get("config_version")
-    if config_version not in {1, 2, 3}:
-        raise ConfigError("config_version must be 1, 2, or 3.")
+    if config_version not in {1, 2, 3, 4}:
+        raise ConfigError("config_version must be 1, 2, 3, or 4.")
 
     archledger_dir = raw_data.get("archledger_dir")
     if not isinstance(archledger_dir, str) or not archledger_dir.strip():
@@ -193,7 +216,13 @@ def load_project_config(path: Path) -> ProjectConfig:
     if not isinstance(project_name, str):
         raise ConfigError("project_name must be a string.")
 
-    source_format, front_matter, section_extension, record_extension = (
+    (
+        source_format,
+        source_schema_version,
+        front_matter,
+        section_extension,
+        record_extension,
+    ) = (
         _parse_source_config(source_data, cast(int, config_version))
     )
     (
@@ -204,6 +233,8 @@ def load_project_config(path: Path) -> ProjectConfig:
         include_superseded,
         strict,
         keep_intermediate,
+        build_converter,
+        build_pdf_engine,
         reference_docx,
         build_outputs,
     ) = _parse_build_config(build_data, cast(int, config_version), source_format)
@@ -216,6 +247,7 @@ def load_project_config(path: Path) -> ProjectConfig:
         project_uuid=_validate_uuid(project_uuid),
         project_name=normalize_project_name(project_name),
         source_format=source_format,
+        source_schema_version=source_schema_version,
         front_matter=front_matter.strip().lower(),
         section_extension=section_extension,
         record_extension=record_extension,
@@ -226,6 +258,8 @@ def load_project_config(path: Path) -> ProjectConfig:
         build_include_superseded=include_superseded,
         build_strict=strict,
         build_keep_intermediate=keep_intermediate,
+        build_converter=build_converter,
+        build_pdf_engine=build_pdf_engine,
         build_reference_docx=reference_docx,
         build_outputs=build_outputs,
         arc42_template_version=template_version,
@@ -257,7 +291,9 @@ def _validate_subtable(
 def _parse_source_config(
     source_data: dict[str, object],
     config_version: int,
-) -> tuple[str, str, str, str]:
+) -> tuple[str, int, str, str, str]:
+    if config_version == 4 and "format" not in source_data:
+        raise ConfigError("source.format is required for config_version 4.")
     source_format_default = "asciidoc" if config_version == 3 else "markdown"
     source_format_value = source_data.get("format", source_format_default)
     if not isinstance(source_format_value, str):
@@ -277,6 +313,13 @@ def _parse_source_config(
     ):
         raise ConfigError('source.front_matter must be the string "yaml".')
 
+    schema_version_value = source_data.get(
+        "schema_version",
+        CURRENT_SOURCE_SCHEMA_VERSION,
+    )
+    if isinstance(schema_version_value, bool) or not isinstance(schema_version_value, int):
+        raise ConfigError("source.schema_version must be an integer.")
+
     default_extension = default_extension_for_source_format(source_format)
     section_extension = _normalize_extension(
         source_data.get("section_extension", default_extension),
@@ -288,6 +331,7 @@ def _parse_source_config(
     )
     return (
         source_format,
+        schema_version_value,
         front_matter_value.strip().lower(),
         section_extension,
         record_extension,
@@ -306,6 +350,8 @@ def _parse_build_config(
     bool,
     bool,
     bool,
+    str,
+    str,
     str,
     dict[str, dict[str, object]],
 ]:
@@ -358,6 +404,14 @@ def _parse_build_config(
         build_data.get("keep_intermediate", False),
         "build.keep_intermediate",
     )
+    converter = _require_converter(
+        build_data.get("converter", "auto"),
+        "build.converter",
+    )
+    pdf_engine = _require_optional_string(
+        build_data.get("pdf_engine", ""),
+        "build.pdf_engine",
+    )
     reference_docx = build_data.get("reference_docx", "")
     if not isinstance(reference_docx, str):
         raise ConfigError("build.reference_docx must be a string.")
@@ -374,6 +428,8 @@ def _parse_build_config(
         include_superseded,
         strict,
         keep_intermediate,
+        converter,
+        pdf_engine,
         reference_docx,
         build_outputs,
     )
@@ -432,6 +488,25 @@ def _require_non_empty_string(value: object, field_name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ConfigError(f"{field_name} must be a non-empty string.")
     return value.strip()
+
+
+def _require_optional_string(value: object, field_name: str) -> str:
+    if not isinstance(value, str):
+        raise ConfigError(f"{field_name} must be a string.")
+    return value.strip()
+
+
+def _require_converter(value: object, field_name: str) -> str:
+    if not isinstance(value, str):
+        raise ConfigError(f"{field_name} must be a string.")
+    normalized = value.strip().lower()
+    if normalized not in _ALLOWED_BUILD_CONVERTERS:
+        raise ConfigError(
+            f"{field_name} must be one of: "
+            + ", ".join(sorted(_ALLOWED_BUILD_CONVERTERS))
+            + "."
+        )
+    return normalized
 
 
 def _normalize_build_outputs(value: dict[str, object]) -> dict[str, dict[str, object]]:

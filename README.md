@@ -1,17 +1,15 @@
 # archledger
 
-`archledger` is an arc42-oriented architecture documentation ledger that stores canonical source fragments as YAML front matter plus AsciiDoc bodies. It keeps a small project-local `archledger.toml` in the source workspace and stores human-editable section and record sources under a configurable `archledger_dir`.
-
-Use it to keep architecture building blocks, runtime scenarios, deployment notes, cross-cutting concepts, ADRs, quality scenarios, risks, and glossary terms as separate source fragments, then assemble one canonical architecture document and export disposable rendered outputs.
+`archledger` is an arc42-oriented architecture documentation ledger that stores canonical source fragments as YAML front matter plus either Markdown or AsciiDoc bodies. It keeps a small project-local `archledger.toml` in the workspace and stores human-editable section and record sources under a configurable `archledger_dir`.
 
 ## What archledger is
 
 `archledger` is intentionally small:
 
 - project-local config discovery from `archledger.toml` or `.archledger.toml`
-- human-editable AsciiDoc source fragments with YAML front matter
-- a compact Typer CLI for initialization, record creation, validation, listing, inspection, migration, and document builds
-- deterministic canonical `.adoc` assembly with optional export formats
+- dual-source canonical fragments in Markdown or AsciiDoc
+- a compact Typer CLI for init, read, record creation, validation, migration, and builds
+- deterministic native document assembly with optional export formats
 
 It is **not** a task tracker, workflow engine, lock manager, or sync tool.
 
@@ -22,22 +20,24 @@ python -m pip install -e .
 archledger --version
 ```
 
-Optional export tools:
-
-- HTML: `asciidoctor`
-- PDF: `asciidoctor-pdf`
-- DOCX / Markdown / reStructuredText / Textile: `asciidoctor` and `pandoc`
-
 ## Quick start
 
+Markdown project:
+
 ```bash
-archledger init
-archledger new white-box --title "Overall System" --status accepted
-archledger new black-box --title "CLI" --parent white_box_0001 --status accepted
-archledger new adr --title "Use AsciiDoc fragments with YAML front matter"
-archledger check
-archledger build
-archledger build --format html --output docs/architecture.html
+archledger init --source-format markdown
+archledger seed arc42-minimal
+archledger --json read --include-body
+archledger build --format markdown
+```
+
+AsciiDoc project:
+
+```bash
+archledger init --source-format asciidoc
+archledger seed arc42-minimal
+archledger --json read --include-body
+archledger build --format asciidoc
 ```
 
 Useful supporting commands:
@@ -47,9 +47,74 @@ archledger status
 archledger where
 archledger list --include-draft
 archledger show black_box_0001
-archledger seed arc42-minimal
+archledger read --include-body --include-draft
 archledger convert-sources --to asciidoc --write
 ```
+
+## Canonical source model
+
+Markdown and AsciiDoc are both first-class source formats. The individual section and record fragments under `archledger_dir` are the source of truth. Generated complete documents under `.archledger/build/` are derived artifacts and must not be edited as canonical source.
+
+Example front matter:
+
+```yaml
+---
+schema_version: 2
+id: adr0001
+type: adr
+title: "Treat source fragments as canonical"
+status: accepted
+section: architecture_decisions
+order: 10
+date: "2026-05-20"
+body_format: markdown
+created_at: "2026-05-20T00:00:00Z"
+updated_at: "2026-05-20T00:00:00Z"
+---
+```
+
+## Reading docs without exporting
+
+Use `read` to inspect the current source state directly:
+
+```bash
+archledger --json where
+archledger --json status
+archledger --json check
+archledger --json read --include-body --include-draft
+archledger --json read --section building_block_view --include-body
+archledger --json read --kind adr --include-body
+```
+
+`read` does not call the build pipeline and does not create `.archledger/build` outputs.
+
+## Build matrix
+
+| Source format | Output format | Tooling |
+| --- | --- | --- |
+| Markdown | Markdown | none |
+| AsciiDoc | AsciiDoc | none |
+| Markdown | HTML, DOCX, RST, Textile, PDF, AsciiDoc | `pandoc` |
+| AsciiDoc | HTML | `asciidoctor` |
+| AsciiDoc | PDF | `asciidoctor-pdf` |
+| AsciiDoc | DOCX, Markdown, RST, Textile | `asciidoctor` + `pandoc` |
+
+Examples:
+
+```bash
+archledger build --format markdown
+archledger build --format asciidoc
+archledger build --format html
+archledger build --formats html,markdown
+archledger --json build --formats html,markdown
+```
+
+Optional tool notes:
+
+- Markdown-source exports use `pandoc`.
+- AsciiDoc HTML uses `asciidoctor`.
+- AsciiDoc PDF uses `asciidoctor-pdf`.
+- AsciiDoc DOCX/Markdown/RST/Textile exports use Asciidoctor DocBook plus `pandoc`.
 
 ## Storage layout
 
@@ -60,9 +125,9 @@ archledger.toml
 .archledger/
   storage.yaml
   sections/
-    01_introduction_and_goals.adoc
+    01_introduction_and_goals.md|adoc
     ...
-    12_glossary.adoc
+    12_glossary.md|adoc
   records/
     requirements/
     building_blocks/
@@ -80,99 +145,25 @@ archledger.toml
     stakeholders/
     strategy/
   build/
+    architecture.md
     architecture.adoc
     architecture.html
     architecture.pdf
     architecture.docx
-    architecture.md
     architecture.rst
     architecture.textile
 ```
 
-Relative `archledger_dir` values are resolved from the config file directory. Absolute paths are used as-is, so external state directories work without creating a nested `.archledger/` inside them.
-
-## Canonical source format
-
-Canonical source fragments use YAML front matter plus AsciiDoc body content:
-
-```adoc
----
-schema_version: 2
-id: adr0001
-type: adr
-title: "Use AsciiDoc fragments with YAML front matter"
-status: accepted
-section: architecture_decisions
-order: 10
-date: "2026-05-20"
-deciders:
-  - Holger
-supersedes: []
-related: []
-tags: []
-body_format: asciidoc
-created_at: "2026-05-20T00:00:00Z"
-updated_at: "2026-05-20T00:00:00Z"
----
-
-[discrete]
-=== Context
-
-What problem or force caused this decision?
-
-[discrete]
-=== Decision
-
-What was decided?
-```
-
-Generated build outputs are disposable artifacts. The canonical source of truth stays in the individual section and record fragments.
-
-## Build output
-
-`archledger build` always assembles a canonical `.adoc` document for AsciiDoc-backed projects, then optionally exports additional formats:
-
-```bash
-archledger build
-archledger build --format asciidoc
-archledger build --format html
-archledger build --format pdf
-archledger build --format docx
-archledger build --format markdown
-archledger build --formats html,markdown
-archledger build --all
-archledger --json build --formats html,markdown
-```
-
-For DOCX, Markdown, reStructuredText, and Textile exports, `archledger` first renders a DocBook intermediate with `asciidoctor` and then converts that intermediate with `pandoc`.
-
-Format resolution rules:
-
-- `--format` builds one explicit format.
-- `--formats` builds a comma-separated set of formats.
-- `--all` builds every supported export format.
-- If `--format` is omitted and `--output` has a known extension, `archledger` infers the output format from the extension.
-- If neither is provided, `archledger` uses the configured default format.
-
-Legacy Markdown-backed projects still build Markdown output. Migrate them explicitly with:
-
-```bash
-archledger convert-sources --to asciidoc --write
-archledger build --format asciidoc
-```
-
-## Agent skill
-
-The repository-provided agent protocol lives at `skills/archledger/SKILL.md`.
-It is repository content for coding agents, not packaged Python data. Agents
-should prefer `archledger --json where`, `archledger --json check`,
-`archledger build`, `archledger convert-sources`, and `archledger seed arc42-minimal`
-when bootstrapping or updating architecture documentation.
+Relative `archledger_dir` values are resolved from the config file directory. Absolute paths are used as-is.
 
 ## Agent guidance
 
-- Prefer `--json` for automation and agent workflows.
-- Edit `.adoc` source fragments, not generated build artifacts.
+- Prefer `--json` for automation.
+- Read source fragments directly with `archledger --json read --include-body` before building artifacts.
 - Use `archledger check` before `archledger build` when mutating records programmatically.
-- Treat Markdown projects as legacy source and migrate them explicitly instead of silently rewriting them.
-- Keep `.archledger/` out of version control unless you intentionally want state inside the repository. The default pattern is to commit `archledger.toml` and ignore `.archledger/`.
+- Treat `.archledger/build/*` as generated output, not source.
+- Use `convert-sources` only when the user explicitly wants a dialect migration.
+
+## Skill
+
+The repository-provided agent protocol lives at `skills/archledger/SKILL.md`.

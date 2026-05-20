@@ -107,3 +107,49 @@ def test_v3_config_supports_source_format_extensions(tmp_path: Path) -> None:
     assert config.record_extension == ".adoc"
     assert config.build_default_format == "asciidoc"
     assert config.build_default_output == "architecture.adoc"
+
+
+def test_v4_config_supports_source_schema_version(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "workspace-v4"
+    workspace_root.mkdir()
+    (workspace_root / "archledger.toml").write_text(
+        "\n".join(
+            [
+                "config_version = 4",
+                'archledger_dir = ".archledger"',
+                'project_uuid = "12345678-1234-1234-1234-123456789abc"',
+                'project_name = "demo"',
+                "",
+                "[source]",
+                'format = "markdown"',
+                'front_matter = "yaml"',
+                'section_extension = ".md"',
+                'record_extension = ".md"',
+                "schema_version = 2",
+                "",
+                "[build]",
+                'default_format = "markdown"',
+                'default_output_dir = "build"',
+                "include_draft = false",
+                "include_superseded = false",
+                "strict = false",
+                "keep_intermediate = false",
+                'converter = "auto"',
+                'pdf_engine = "tectonic"',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    _, config, warnings = resolve_project_paths(workspace_root)
+
+    assert warnings == []
+    assert config.config_version == 4
+    assert config.source_format == "markdown"
+    assert config.source_schema_version == 2
+    assert config.build_default_format == "markdown"
+    assert config.build_default_output == "architecture.md"
+    assert config.build_output_dir == "build"
+    assert config.build_converter == "auto"
+    assert config.build_pdf_engine == "tectonic"

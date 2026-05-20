@@ -4,10 +4,16 @@ from dataclasses import dataclass
 from pathlib import Path
 
 VALID_SOURCE_FORMATS = frozenset({"markdown", "asciidoc"})
+VALID_BODY_FORMATS = VALID_SOURCE_FORMATS
 SOURCE_FORMAT_EXTENSIONS = {
     "markdown": ".md",
     "asciidoc": ".adoc",
 }
+SOURCE_FORMAT_NATIVE_OUTPUTS = {
+    "markdown": "markdown",
+    "asciidoc": "asciidoc",
+}
+CURRENT_SOURCE_SCHEMA_VERSION = 2
 VALID_OUTPUT_FORMATS = frozenset(
     {"asciidoc", "html", "pdf", "docx", "markdown", "rst", "textile"}
 )
@@ -40,6 +46,14 @@ PLACEHOLDER_SNIPPETS = (
     "Describe the runtime scenario.",
     "Describe the deployment or infrastructure view.",
 )
+SECTION_BODY_PLACEHOLDERS = {
+    "markdown": "<!-- archledger: add section-level prose here -->",
+    "asciidoc": "// archledger: add section-level prose here",
+}
+EMPTY_SECTION_PLACEHOLDERS = {
+    "markdown": "<!-- archledger: no accepted records for this section yet -->",
+    "asciidoc": "// archledger: no accepted records for this section yet",
+}
 
 SECTION_ORDER = {
     "introduction_and_goals": 10,
@@ -298,6 +312,13 @@ def default_extension_for_source_format(source_format: str) -> str:
         raise ValueError(f"Unsupported source format: {source_format}") from exc
 
 
+def native_output_format_for_source_format(source_format: str) -> str:
+    try:
+        return SOURCE_FORMAT_NATIVE_OUTPUTS[source_format]
+    except KeyError as exc:
+        raise ValueError(f"Unsupported source format: {source_format}") from exc
+
+
 def infer_output_format_from_path(path: str | Path) -> str | None:
     suffix = Path(path).suffix.lower()
     for output_format, extension in OUTPUT_FORMAT_EXTENSIONS.items():
@@ -331,6 +352,20 @@ def record_template_name_for_source_format(
     if source_format == "asciidoc":
         return template_name.replace(".md.j2", ".adoc.j2")
     raise ValueError(f"Unsupported source format: {source_format}")
+
+
+def section_body_placeholder_for_source_format(source_format: str) -> str:
+    try:
+        return SECTION_BODY_PLACEHOLDERS[source_format]
+    except KeyError as exc:
+        raise ValueError(f"Unsupported source format: {source_format}") from exc
+
+
+def empty_section_placeholder_for_source_format(source_format: str) -> str:
+    try:
+        return EMPTY_SECTION_PLACEHOLDERS[source_format]
+    except KeyError as exc:
+        raise ValueError(f"Unsupported source format: {source_format}") from exc
 
 
 def section_filename_for(section_spec: SectionSpec, extension: str = ".md") -> str:

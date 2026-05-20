@@ -1,4 +1,5 @@
 ---
+schema_version: 2
 id: {{ id }}
 type: infrastructure
 title: {{ title | tojson }}
@@ -7,8 +8,12 @@ section: {{ section }}
 level: {{ level }}
 parent: {{ parent | default('null') }}
 order: {{ order }}
+date: {{ date | tojson }}
 environment: {{ environment | tojson }}
 maps_building_blocks: []
+body_format: markdown
+created_at: {{ created_at | tojson }}
+updated_at: {{ updated_at | tojson }}
 ---
 
 Describe the deployment or infrastructure view.

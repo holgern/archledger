@@ -9,6 +9,25 @@ def test_archledger_skill_exists() -> None:
     text = skill.read_text(encoding="utf-8")
     assert "archledger --json where" in text
     assert "archledger --json check" in text
-    assert "archledger build" in text
+    assert "archledger --json read --include-body" in text
     assert "archledger seed arc42-minimal" in text
     assert "generated build output" in text.lower()
+
+
+def test_skill_file_mentions_markdown_and_asciidoc() -> None:
+    text = Path("skills/archledger/SKILL.md").read_text(encoding="utf-8").lower()
+    assert "markdown" in text
+    assert "asciidoc" in text
+
+
+def test_skill_file_instructs_read_without_export() -> None:
+    text = Path("skills/archledger/SKILL.md").read_text(encoding="utf-8").lower()
+    assert "archledger --json read --include-body" in text
+    assert ".archledger/build" in text
+    assert "source of truth" in text
+
+
+def test_skill_file_does_not_call_markdown_legacy() -> None:
+    text = Path("skills/archledger/SKILL.md").read_text(encoding="utf-8").lower()
+    assert "markdown as legacy" not in text
+    assert "treat markdown projects as legacy" not in text

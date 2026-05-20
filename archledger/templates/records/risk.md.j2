@@ -1,13 +1,18 @@
 ---
+schema_version: 2
 id: {{ id }}
 type: risk
 title: {{ title | tojson }}
 status: {{ status }}
 section: {{ section }}
 order: {{ order }}
+date: {{ date | tojson }}
 severity: medium
 probability: medium
 mitigation: ""
+body_format: markdown
+created_at: {{ created_at | tojson }}
+updated_at: {{ updated_at | tojson }}
 ---
 
 Describe this risk and its mitigation.
