@@ -22,3 +22,43 @@ Changes
 
 If ``[tracking].enabled = false``, both commands fail explicitly instead of
 creating or reading misleading tracking state.
+
+Linking source_refs
+-------------------
+
+When a fragment documents concrete implementation artifacts, add ``source_refs``
+that point at relative workspace paths:
+
+.. code-block:: yaml
+
+   source_refs:
+     - archledger/repository.py#ArchitectureRepository
+     - path: archledger/storage/project_config.py
+       symbols:
+         - ProjectConfig
+         - load_project_config
+       reason: "Tracking configuration validation"
+     - path: archledger/templates/
+       reason: "Bundled templates"
+
+Use POSIX separators, keep the paths relative to the workspace root, and end
+directory references with ``/``.
+
+Recommended workflow
+--------------------
+
+Use tracking as a repeatable drift loop instead of a one-off report:
+
+.. code-block:: bash
+
+   archledger --json changed
+   archledger --json read --include-body --include-draft
+   archledger --json check
+   archledger --json snapshot --reason after-archledger-update
+
+In practice:
+
+1. Add ``source_refs`` when a fragment describes real code, configuration, or directories.
+2. Run ``changed`` to see what moved since the last accepted baseline.
+3. Update only the impacted fragments and validate them with ``check``.
+4. Record a fresh snapshot after the documentation update is complete.

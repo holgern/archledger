@@ -312,3 +312,74 @@ def test_build_outputs_validate_per_output_settings(
     with pytest.raises(ConfigError) as excinfo:
         resolve_project_paths(workspace_root)
     assert str(excinfo.value) == message
+
+
+def test_config_version_bool_is_rejected(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "workspace-invalid-config-version"
+    workspace_root.mkdir()
+    (workspace_root / "archledger.toml").write_text(
+        "\n".join(
+            [
+                "config_version = true",
+                'archledger_dir = ".archledger"',
+                'project_uuid = "12345678-1234-1234-1234-123456789abc"',
+                'project_name = "demo"',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError) as excinfo:
+        resolve_project_paths(workspace_root)
+    assert str(excinfo.value) == "config_version must be 1, 2, 3, 4, or 5."
+
+
+@pytest.mark.parametrize(
+    ("config_lines", "message"),
+    [
+        (
+            [
+                "[source]",
+                'format = "markdown"',
+                "schema_version = true",
+            ],
+            "source.schema_version must be an integer.",
+        ),
+        (
+            [
+                "[source]",
+                'format = "markdown"',
+                "",
+                "[tracking]",
+                "max_file_bytes = true",
+            ],
+            "tracking.max_file_bytes must be a positive integer.",
+        ),
+    ],
+)
+def test_integer_like_config_fields_reject_booleans(
+    tmp_path: Path,
+    config_lines: list[str],
+    message: str,
+) -> None:
+    workspace_root = tmp_path / "workspace-invalid-integer-like-bool"
+    workspace_root.mkdir()
+    (workspace_root / "archledger.toml").write_text(
+        "\n".join(
+            [
+                "config_version = 5",
+                'archledger_dir = ".archledger"',
+                'project_uuid = "12345678-1234-1234-1234-123456789abc"',
+                'project_name = "demo"',
+                "",
+                *config_lines,
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError) as excinfo:
+        resolve_project_paths(workspace_root)
+    assert str(excinfo.value) == message

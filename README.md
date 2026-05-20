@@ -2,6 +2,14 @@
 
 `archledger` is an arc42-oriented architecture documentation ledger. It stores architecture knowledge as small, reviewable source fragments with YAML front matter and Markdown or AsciiDoc bodies. The fragments are the source of truth; complete documents under `.archledger/build/` are generated artifacts.
 
+## Release status
+
+`archledger` is currently **beta**.
+
+- Native Markdown and AsciiDoc source workflows are the most stable path.
+- Converter-backed exports are supported when the required external tools are installed and validated by CI.
+- See `CHANGELOG.md` for recent release-oriented changes and `docs/release-process.rst` for the maintainer release checklist.
+
 ## What archledger is
 
 `archledger` is intentionally small:
@@ -42,6 +50,8 @@ Optional converter tools:
 - `pandoc` for Markdown-source exports and some AsciiDoc exports
 - `asciidoctor` for native AsciiDoc HTML and DocBook conversion
 - `asciidoctor-pdf` for native AsciiDoc PDF output
+
+Converter-backed formats are part of the supported workflow only when those tools are present and the related integration checks pass.
 
 ## Quick start
 
@@ -98,6 +108,18 @@ Sections are the arc42 chapter skeleton. Records hold individual requirements, d
 ### Generated outputs
 
 Files under `.archledger/build/` are generated output. Do not edit them as canonical source.
+
+### What to commit
+
+For a project that uses `archledger`, commit the canonical source and config:
+
+- `archledger.toml`
+- `.archledger/sections/**`
+- `.archledger/records/**`
+- optionally `.archledger/storage.yaml` if you want deterministic id allocation across machines
+- optionally `.archledger/source-state.json` if your team wants a shared drift baseline
+
+Do **not** treat `.archledger/build/**` as canonical source. Generated build output and converter intermediates are disposable unless you are intentionally debugging an export issue.
 
 ## Record types
 
@@ -172,6 +194,23 @@ source_refs:
 ```
 
 Paths must be relative to the workspace root. Directory refs end with `/` and must point to an existing directory.
+
+### Practical drift workflow
+
+```bash
+archledger --json changed
+archledger --json read --include-body --include-draft
+# update the affected fragments and their source_refs
+archledger --json check
+archledger --json snapshot --reason after-archledger-update
+```
+
+A useful pattern is:
+
+1. Link records to the relevant code or directories with `source_refs`.
+2. Run `changed` before broad documentation refreshes.
+3. Update only the fragments whose refs were impacted.
+4. Record a fresh snapshot only after the documentation update is validated.
 
 ## Building output documents
 
@@ -286,6 +325,19 @@ python -m mypy archledger
 python -m sphinx -b html docs docs/_build/html
 ```
 
+Release-oriented checks:
+
+```bash
+rm -rf dist build *.egg-info
+python -m build
+python -m twine check dist/*
+python -m venv /tmp/archledger-wheel-test
+/tmp/archledger-wheel-test/bin/python -m pip install dist/*.whl
+/tmp/archledger-wheel-test/bin/archledger --version
+```
+
+For the full maintainer checklist, see `docs/release-process.rst`.
+
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
@@ -301,3 +353,7 @@ python -m sphinx -b html docs docs/_build/html
 ## Skill
 
 The repository-provided coding-agent protocol lives at `skills/archledger/SKILL.md`.
+
+## Security and trust
+
+`archledger` reads local project files and only invokes external converters when you request output formats that need them. It does not sync or send project content anywhere by itself.

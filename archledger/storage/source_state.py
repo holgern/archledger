@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
 from archledger.errors import StorageError
+from archledger.source_refs import RelativePosixPathError, validate_relative_posix_path
 from archledger.source_tracking import SOURCE_STATE_SCHEMA, SourceState, TrackedFile
 from archledger.storage.common import read_text, write_text
 
@@ -60,7 +61,13 @@ def source_state_from_json(data: object) -> SourceState:
     files_data = _require_mapping(data.get("files"), "files")
     files: dict[str, TrackedFile] = {}
     for path, raw_entry in sorted(files_data.items()):
-        normalized_path = _validate_relative_posix_path(path)
+        try:
+            normalized_path = validate_relative_posix_path(
+                path,
+                field_name="source-state file paths",
+            )
+        except RelativePosixPathError as exc:
+            raise StorageError(str(exc)) from exc
         entry = _require_mapping(raw_entry, f"files.{path}")
         files[normalized_path] = TrackedFile(
             path=normalized_path,
@@ -103,14 +110,3 @@ def _require_mapping(value: object, field_name: str) -> dict[str, object]:
             raise StorageError(f"source-state field {field_name} must use string keys.")
         normalized[key] = item
     return normalized
-
-
-def _validate_relative_posix_path(path: str) -> str:
-    if "\\" in path:
-        raise StorageError("source-state file paths must use POSIX separators.")
-    pure_path = PurePosixPath(path)
-    if pure_path.is_absolute() or not path.strip():
-        raise StorageError("source-state file paths must be relative.")
-    if ".." in pure_path.parts:
-        raise StorageError("source-state file paths must not contain '..'.")
-    return path

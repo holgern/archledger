@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from archledger.cli import app
+from archledger.errors import StorageError
 from archledger.repository import ArchitectureRepository
 from archledger.source_tracking import (
     diff_source_states,
@@ -156,6 +159,34 @@ def test_resolve_impacts_reports_linked_records_and_unlinked_files(
     assert impacted.matched_refs == ("src/module.py",)
     assert "building_block_view" in resolved.impacted_sections
     assert resolved.unlinked_changed_files == ("src/unlinked.py",)
+
+
+def test_source_state_rejects_backslash_paths(tmp_path: Path) -> None:
+    source_state_path = tmp_path / "source-state.json"
+    source_state_path.write_text(
+        json.dumps(
+            {
+                "schema": "archledger.source-state.v1",
+                "project_uuid": "12345678-1234-1234-1234-123456789abc",
+                "project_name": "demo",
+                "created_at": "2026-05-20T00:00:00Z",
+                "updated_at": "2026-05-20T00:00:00Z",
+                "reason": "test",
+                "scanner": {"used": "filesystem"},
+                "files": {
+                    "src\\module.py": {
+                        "sha256": "abc",
+                        "size": 1,
+                        "mtime_ns": 1,
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(StorageError, match="POSIX separators"):
+        read_source_state(source_state_path)
 
 
 def init_project(tmp_path: Path) -> None:

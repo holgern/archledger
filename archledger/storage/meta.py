@@ -53,7 +53,7 @@ def read_storage_meta(path: Path) -> StorageMeta:
     normalized_next_numbers: dict[str, int] = {}
     for key in _counter_keys():
         value = next_numbers.get(key, 1)
-        if not isinstance(value, int) or value < 1:
+        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
             raise StorageError(
                 f"storage.yaml next_numbers[{key!r}] must be a positive integer."
             )

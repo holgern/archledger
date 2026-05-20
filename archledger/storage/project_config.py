@@ -347,7 +347,7 @@ def load_project_config(path: Path) -> ProjectConfig:
     )
 
     config_version = raw_data.get("config_version")
-    if config_version not in {1, 2, 3, 4, 5}:
+    if isinstance(config_version, bool) or config_version not in {1, 2, 3, 4, 5}:
         raise ConfigError("config_version must be 1, 2, 3, 4, or 5.")
 
     archledger_dir = raw_data.get("archledger_dir")

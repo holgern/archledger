@@ -7,24 +7,98 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
-import yaml
 
 from archledger import __version__
+from archledger.cli_formatting import (
+    format_build_message as _format_build_message,
+)
+from archledger.cli_formatting import (
+    format_changed_message as _format_changed_message,
+)
+from archledger.cli_formatting import (
+    format_check_message as _format_check_message,
+)
+from archledger.cli_formatting import (
+    format_convert_sources_message as _format_convert_sources_message,
+)
+from archledger.cli_formatting import (
+    format_init_message as _format_init_message,
+)
+from archledger.cli_formatting import (
+    format_list_message as _format_list_message,
+)
+from archledger.cli_formatting import (
+    format_new_message as _format_new_message,
+)
+from archledger.cli_formatting import (
+    format_read_message as _format_read_message,
+)
+from archledger.cli_formatting import (
+    format_seed_message as _format_seed_message,
+)
+from archledger.cli_formatting import (
+    format_show_message as _format_show_message,
+)
+from archledger.cli_formatting import (
+    format_snapshot_message as _format_snapshot_message,
+)
+from archledger.cli_formatting import (
+    format_status_message as _format_status_message,
+)
+from archledger.cli_formatting import (
+    format_where_message as _format_where_message,
+)
+from archledger.cli_payloads import (
+    build_result_payload as _build_payload,
+)
+from archledger.cli_payloads import (
+    changed_payload as _changed_payload,
+)
+from archledger.cli_payloads import (
+    check_payload as _check_payload,
+)
+from archledger.cli_payloads import (
+    convert_sources_payload as _convert_sources_payload,
+)
+from archledger.cli_payloads import (
+    finding_payload as _finding_payload,
+)
+from archledger.cli_payloads import (
+    init_result_payload as _init_payload,
+)
+from archledger.cli_payloads import (
+    list_records_payload as _list_payload,
+)
+from archledger.cli_payloads import (
+    new_record_payload as _new_payload,
+)
+from archledger.cli_payloads import (
+    read_payload as _read_payload,
+)
+from archledger.cli_payloads import (
+    seed_payload as _seed_payload,
+)
+from archledger.cli_payloads import (
+    show_record_payload as _show_payload,
+)
+from archledger.cli_payloads import (
+    snapshot_payload as _snapshot_payload,
+)
+from archledger.cli_payloads import (
+    status_payload as _status_payload,
+)
+from archledger.cli_payloads import (
+    where_payload as _where_payload,
+)
 from archledger.errors import ArchledgerError, StorageError
 from archledger.migration import convert_sources
-from archledger.model import ArchitectureRecord, is_visible_status, normalize_kind
+from archledger.model import ArchitectureRecord
 from archledger.render import build_document
 from archledger.repository import (
     ArchitectureRepository,
-    CheckFinding,
     CheckResult,
-    InitResult,
-    StatusResult,
 )
 from archledger.source_tracking import (
-    ChangedFile,
-    ChangeSet,
-    ImpactedRecord,
     SourceState,
     diff_source_states,
     resolve_impacts,
@@ -144,17 +218,13 @@ def init(
         paths, config, warnings = resolve_project_paths(workspace_root)
         repo = ArchitectureRepository(paths, config)
         result = repo.init()
+        payload = _init_payload(result)
         _emit_success(
             state,
             command="init",
-            result={
-                "workspace_root": str(result.workspace_root),
-                "config_path": str(result.config_path),
-                "archledger_dir": str(result.archledger_dir),
-                "created_paths": [str(path) for path in result.created_paths],
-            },
+            result=payload,
             warnings=warnings,
-            human_message=_format_init_message(result),
+            human_message=_format_init_message(payload),
         )
     except ArchledgerError as exc:
         _emit_error(state, "init", exc)
@@ -242,22 +312,19 @@ def new_record(
         config: ProjectConfig,
     ) -> dict[str, object]:
         del paths, config
-        record = repo.create_record(
-            kind,
-            title,
-            parent=parent,
-            status=status,
-            section=section,
-            context_kind=context_kind,
-            partner=partner,
-            environment=environment,
-            quality=quality,
+        return _new_payload(
+            repo.create_record(
+                kind,
+                title,
+                parent=parent,
+                status=status,
+                section=section,
+                context_kind=context_kind,
+                partner=partner,
+                environment=environment,
+                quality=quality,
+            )
         )
-        return {
-            "id": record.id,
-            "type": record.type,
-            "path": str(record.path),
-        }
 
     _run_configured_command(state, "new", build_result, _format_new_message)
 
@@ -278,17 +345,7 @@ def seed(
         if preset != "arc42-minimal":
             raise ArchledgerError(f"Unsupported seed preset: {preset}")
         records = _seed_arc42_minimal(repo)
-        return {
-            "preset": preset,
-            "records": [
-                {
-                    "id": record.id,
-                    "type": record.type,
-                    "path": str(record.path),
-                }
-                for record in records
-            ],
-        }
+        return _seed_payload(preset, records)
 
     _run_configured_command(state, "seed", build_result, _format_seed_message)
 
@@ -307,20 +364,7 @@ def list_records(
         config: ProjectConfig,
     ) -> dict[str, object]:
         del paths, config
-        records = repo.list_records(include_draft=include_draft, kind=kind)
-        return {
-            "records": [
-                {
-                    "id": record.id,
-                    "type": record.type,
-                    "status": record.status,
-                    "section": record.section,
-                    "title": record.title,
-                    "path": str(record.path),
-                }
-                for record in records
-            ]
-        }
+        return _list_payload(repo.list_records(include_draft=include_draft, kind=kind))
 
     _run_configured_command(state, "list", build_result, _format_list_message)
 
@@ -338,17 +382,7 @@ def show(
         config: ProjectConfig,
     ) -> dict[str, object]:
         del paths, config
-        record = repo.get_record(record_id)
-        return {
-            "id": record.id,
-            "type": record.type,
-            "status": record.status,
-            "section": record.section,
-            "title": record.title,
-            "path": str(record.path),
-            "metadata": record.metadata,
-            "body": record.body,
-        }
+        return _show_payload(repo.get_record(record_id))
 
     _run_configured_command(state, "show", build_result, _format_show_message)
 
@@ -369,55 +403,16 @@ def read(
         paths: ProjectPaths,
         config: ProjectConfig,
     ) -> dict[str, object]:
-        normalized_kind = None
-        if kind is not None:
-            normalized_kind = (
-                "section" if kind.strip().lower() == "section" else normalize_kind(kind)
-            )
-        records = []
-        for record in repo.load_all_records(include_sections=True):
-            if record.type != "section" and not is_visible_status(
-                record.status,
-                include_draft=include_draft,
-                include_superseded=include_superseded,
-            ):
-                continue
-            if section is not None and record.section != section:
-                continue
-            if normalized_kind is not None and record.type != normalized_kind:
-                continue
-            item: dict[str, object] = {
-                "id": record.id,
-                "type": record.type,
-                "title": record.title,
-                "status": record.status,
-                "section": record.section,
-                "order": record.order,
-                "path": _display_path(paths.workspace_root, record.path),
-                "body_format": record.metadata.get("body_format", config.source_format),
-                "metadata": record.metadata,
-            }
-            if include_body:
-                item["body"] = record.body
-            records.append(item)
-        return {
-            "schema": "archledger.read.v1",
-            "project": {
-                "name": config.project_name,
-                "uuid": config.project_uuid,
-                "source_format": config.source_format,
-                "source_schema_version": config.source_schema_version,
-                "arc42_template_version": config.arc42_template_version,
-            },
-            "paths": {
-                "workspace_root": str(paths.workspace_root),
-                "config_path": str(paths.config_path),
-                "archledger_dir": str(paths.archledger_dir),
-                "sections_dir": str(paths.sections_dir),
-                "records_dir": str(paths.records_dir),
-            },
-            "records": records,
-        }
+        return _read_payload(
+            repo,
+            paths,
+            config,
+            include_body=include_body,
+            include_draft=include_draft,
+            include_superseded=include_superseded,
+            section=section,
+            kind=kind,
+        )
 
     _run_configured_command(state, "read", build_result, _format_read_message)
 
@@ -533,16 +528,7 @@ def build(
             include_superseded=include_superseded,
             strict=strict,
         )
-        return {
-            "assembled_path": str(result.assembled_path),
-            "outputs": [
-                {
-                    "format": output_result.format,
-                    "output_path": str(output_result.output_path),
-                }
-                for output_result in result.outputs
-            ],
-        }
+        return _build_payload(result)
 
     _run_configured_command(state, "build", build_result, _format_build_message)
 
@@ -580,21 +566,7 @@ def convert_sources_command(
             replace=replace,
             allow_mixed_body_format=allow_mixed_body_format,
         )
-        return {
-            "target_format": result.target_format,
-            "write": result.write,
-            "replace": result.replace,
-            "config_path": str(result.config_path),
-            "converted": [
-                {
-                    "source_path": str(item.source_path),
-                    "output_path": str(item.output_path),
-                    "body_format": item.body_format,
-                }
-                for item in result.converted
-            ],
-            "warnings": list(result.warnings),
-        }
+        return _convert_sources_payload(result)
 
     _run_configured_command(
         state,
@@ -628,309 +600,6 @@ def _run_configured_command(
         _emit_error(state, command, exc)
 
 
-def _status_payload(
-    repo: ArchitectureRepository,
-    paths: ProjectPaths,
-    config: ProjectConfig,
-) -> dict[str, object]:
-    status_result: StatusResult = repo.status()
-    return {
-        "workspace_root": str(status_result.workspace_root),
-        "config_path": str(status_result.config_path),
-        "archledger_dir": str(status_result.archledger_dir),
-        "storage_meta_path": str(status_result.storage_meta_path),
-        "build_dir": str(status_result.build_dir),
-        "sections_count": status_result.sections_count,
-        "record_directories_count": status_result.record_directories_count,
-        "project_name": config.project_name,
-        "project_uuid": config.project_uuid,
-    }
-
-
-def _where_payload(
-    repo: ArchitectureRepository,
-    paths: ProjectPaths,
-    config: ProjectConfig,
-) -> dict[str, object]:
-    del repo, config
-    return {
-        "workspace_root": str(paths.workspace_root),
-        "config_path": str(paths.config_path),
-        "archledger_dir": str(paths.archledger_dir),
-        "sections_dir": str(paths.sections_dir),
-        "records_dir": str(paths.records_dir),
-        "build_dir": str(paths.build_dir),
-        "storage_meta_path": str(paths.storage_meta_path),
-    }
-
-
-def _snapshot_payload(paths: ProjectPaths, state: SourceState) -> dict[str, object]:
-    return {
-        "schema": "archledger.snapshot.v1",
-        "source_state_path": str(paths.source_state_path),
-        "reason": state.reason,
-        "scanner_used": state.scanner.get("used", "filesystem"),
-        "file_count": len(state.files),
-        "updated_at": state.updated_at,
-    }
-
-
-def _changed_payload(paths: ProjectPaths, changes: ChangeSet) -> dict[str, object]:
-    baseline: dict[str, object] = {"exists": changes.baseline_exists}
-    if changes.baseline_exists:
-        baseline["updated_at"] = changes.baseline_updated_at
-        baseline["reason"] = changes.baseline_reason
-    return {
-        "schema": "archledger.changed.v1",
-        "baseline": baseline,
-        "scan": {
-            "scanned_at": changes.current_scanned_at,
-            "scanner_used": changes.scanner_used,
-            "file_count": changes.file_count,
-        },
-        "changes": {
-            "added": [
-                _changed_file_payload(item)
-                for item in changes.changed_files
-                if item.change == "added"
-            ],
-            "modified": [
-                _changed_file_payload(item)
-                for item in changes.changed_files
-                if item.change == "modified"
-            ],
-            "deleted": [
-                _changed_file_payload(item)
-                for item in changes.changed_files
-                if item.change == "deleted"
-            ],
-            "possible_renames": [
-                {
-                    "old_path": item.old_path,
-                    "new_path": item.new_path,
-                    "sha256": item.sha256,
-                }
-                for item in changes.possible_renames
-            ],
-            "unbaselined_files": list(changes.unbaselined_files),
-        },
-        "impact": {
-            "records": [
-                _impacted_record_payload(paths, item)
-                for item in changes.impacted_records
-            ],
-            "sections": list(changes.impacted_sections),
-            "unlinked_changed_files": list(changes.unlinked_changed_files),
-        },
-    }
-
-
-def _changed_file_payload(item: ChangedFile) -> dict[str, object]:
-    payload: dict[str, object] = {"path": item.path}
-    if item.old_sha256 is not None:
-        payload["old_sha256"] = item.old_sha256
-    if item.new_sha256 is not None:
-        payload["new_sha256"] = item.new_sha256
-    if item.size is not None:
-        payload["size"] = item.size
-    return payload
-
-
-def _impacted_record_payload(
-    paths: ProjectPaths,
-    item: ImpactedRecord,
-) -> dict[str, object]:
-    return {
-        "id": item.id,
-        "type": item.type,
-        "title": item.title,
-        "status": item.status,
-        "section": item.section,
-        "path": _display_path(paths.workspace_root, Path(item.path)),
-        "matched_refs": list(item.matched_refs),
-    }
-
-
-def _format_init_message(result: InitResult) -> str:
-    return "\n".join(
-        [
-            f"Initialized archledger in {result.workspace_root}",
-            f"Config: {result.config_path}",
-            f"State: {result.archledger_dir}",
-        ]
-    )
-
-
-def _format_status_message(payload: dict[str, object]) -> str:
-    return "\n".join(
-        [
-            f"Project: {payload['project_name']}",
-            f"Workspace: {payload['workspace_root']}",
-            f"Config: {payload['config_path']}",
-            f"State: {payload['archledger_dir']}",
-            f"Sections: {payload['sections_count']}",
-            f"Record directories: {payload['record_directories_count']}",
-        ]
-    )
-
-
-def _format_where_message(payload: dict[str, object]) -> str:
-    return "\n".join(
-        [
-            f"Workspace: {payload['workspace_root']}",
-            f"Config: {payload['config_path']}",
-            f"State: {payload['archledger_dir']}",
-            f"Sections: {payload['sections_dir']}",
-            f"Records: {payload['records_dir']}",
-            f"Build: {payload['build_dir']}",
-            f"Storage metadata: {payload['storage_meta_path']}",
-        ]
-    )
-
-
-def _format_new_message(payload: dict[str, object]) -> str:
-    return f"Created {payload['id']}: {payload['path']}"
-
-
-def _format_seed_message(payload: dict[str, object]) -> str:
-    records = payload.get("records")
-    if not isinstance(records, list):
-        raise RuntimeError("Seed payload was malformed.")
-    return f"Seeded {payload['preset']} with {len(records)} record(s)."
-
-
-def _format_list_message(payload: dict[str, object]) -> str:
-    records = payload["records"]
-    if not isinstance(records, list) or not records:
-        return "No records found."
-    lines = []
-    for item in records:
-        if not isinstance(item, dict):
-            continue
-        lines.append(f"{item['id']}  {item['type']}  {item['status']}  {item['title']}")
-    return "\n".join(lines)
-
-
-def _format_show_message(payload: dict[str, object]) -> str:
-    metadata = payload["metadata"]
-    body = payload["body"]
-    if not isinstance(metadata, dict) or not isinstance(body, str):
-        raise RuntimeError("Show payload was malformed.")
-    yaml_text = yaml.safe_dump(metadata, sort_keys=False).rstrip()
-    document = f"Path: {payload['path']}\n---\n{yaml_text}\n---"
-    if body:
-        document = f"{document}\n\n{body.rstrip()}"
-    return document
-
-
-def _format_read_message(payload: dict[str, object]) -> str:
-    records = payload.get("records")
-    project = payload.get("project")
-    if not isinstance(records, list) or not isinstance(project, dict):
-        raise RuntimeError("Read payload was malformed.")
-    return (
-        f"Read {len(records)} source fragment(s) from "
-        f"{project.get('name', 'unknown-project')}."
-    )
-
-
-def _format_check_message(payload: dict[str, object]) -> str:
-    error_messages = payload["errors"]
-    warning_messages = payload["warnings"]
-    if not isinstance(error_messages, list) or not isinstance(warning_messages, list):
-        raise RuntimeError("Check payload was malformed.")
-    lines = [
-        (
-            "Check completed: "
-            f"{len(error_messages)} error(s), "
-            f"{len(warning_messages)} warning(s)"
-        ),
-    ]
-    for entry in error_messages:
-        if isinstance(entry, dict):
-            lines.append(f"error: {entry['message']}")
-    for entry in warning_messages:
-        if isinstance(entry, dict):
-            lines.append(f"warning: {entry['message']}")
-    if payload.get("repaired_counters"):
-        lines.append("Counters repaired.")
-    return "\n".join(lines)
-
-
-def _format_snapshot_message(payload: dict[str, object]) -> str:
-    return (
-        f"Snapshot saved to {payload['source_state_path']} "
-        f"({payload['file_count']} file(s), scanner: {payload['scanner_used']})."
-    )
-
-
-def _format_changed_message(payload: dict[str, object]) -> str:
-    baseline = payload.get("baseline")
-    changes = payload.get("changes")
-    impact = payload.get("impact")
-    if (
-        not isinstance(baseline, dict)
-        or not isinstance(changes, dict)
-        or not isinstance(impact, dict)
-    ):
-        raise RuntimeError("Changed payload was malformed.")
-    if baseline.get("exists") is False:
-        lines = ["No source baseline found. Run: archledger snapshot"]
-        for path in changes.get("unbaselined_files", []):
-            lines.append(f"- unbaselined: {path}")
-        return "\n".join(lines)
-
-    lines = [f"Changed since baseline {baseline.get('updated_at', 'unknown')}:"]
-    for label in ("modified", "added", "deleted"):
-        entries = changes.get(label, [])
-        if not isinstance(entries, list):
-            continue
-        for entry in entries:
-            if isinstance(entry, dict):
-                lines.append(f"- {label}: {entry['path']}")
-    rename_entries = changes.get("possible_renames", [])
-    if isinstance(rename_entries, list):
-        for entry in rename_entries:
-            if isinstance(entry, dict):
-                lines.append(
-                    f"- possible rename: {entry['old_path']} -> {entry['new_path']}"
-                )
-    sections = impact.get("sections", [])
-    if isinstance(sections, list) and sections:
-        lines.append("")
-        lines.append("Impacted archledger sections:")
-        for section in sections:
-            lines.append(f"- {section}")
-    records = impact.get("records", [])
-    if isinstance(records, list) and records:
-        lines.append("")
-        lines.append("Impacted records:")
-        for record in records:
-            if isinstance(record, dict):
-                lines.append(f"- {record['id']} {record['title']}")
-    unlinked = impact.get("unlinked_changed_files", [])
-    if isinstance(unlinked, list) and unlinked:
-        lines.append("")
-        lines.append("Unlinked changed files:")
-        for path in unlinked:
-            lines.append(f"- {path}")
-    return "\n".join(lines)
-
-
-def _format_build_message(payload: dict[str, object]) -> str:
-    outputs = payload.get("outputs")
-    if not isinstance(outputs, list) or not outputs:
-        raise RuntimeError("Build payload was malformed.")
-    if len(outputs) == 1 and isinstance(outputs[0], dict):
-        return f"Built {outputs[0]['format']}: {outputs[0]['output_path']}"
-
-    lines = ["Built outputs:"]
-    for item in outputs:
-        if isinstance(item, dict):
-            lines.append(f"{item['format']}: {item['output_path']}")
-    return "\n".join(lines)
-
-
 def _load_tracking_baseline(
     paths: ProjectPaths,
     config: ProjectConfig,
@@ -944,22 +613,6 @@ def _load_tracking_baseline(
             "current project configuration."
         )
     return state
-
-
-def _format_convert_sources_message(payload: dict[str, object]) -> str:
-    converted = payload.get("converted")
-    warnings = payload.get("warnings")
-    if not isinstance(converted, list) or not isinstance(warnings, list):
-        raise RuntimeError("convert-sources payload was malformed.")
-    action = "Converted" if payload.get("write") else "Planned"
-    lines = [
-        f"{action} {len(converted)} source file(s) to {payload['target_format']}.",
-    ]
-    if not payload.get("write"):
-        lines.append("Re-run with --write to apply the migration.")
-    for warning in warnings:
-        lines.append(f"warning: {warning}")
-    return "\n".join(lines)
 
 
 def _state(ctx: typer.Context) -> CLIState:
@@ -1018,28 +671,6 @@ def _emit_error(state: CLIState, command: str, exc: ArchledgerError) -> None:
     else:
         typer.echo(f"{exc.__class__.__name__}: {exc.message}", err=True)
     raise typer.Exit(code=1)
-
-
-def _check_payload(result: CheckResult) -> dict[str, object]:
-    return {
-        "errors": [_finding_payload(finding) for finding in result.errors],
-        "warnings": [_finding_payload(finding) for finding in result.warnings],
-        "repaired_counters": result.repaired_counters,
-    }
-
-
-def _finding_payload(finding: CheckFinding) -> dict[str, object]:
-    payload: dict[str, object] = {"level": finding.level, "message": finding.message}
-    if finding.path is not None:
-        payload["path"] = str(finding.path)
-    return payload
-
-
-def _display_path(workspace_root: Path, path: Path) -> str:
-    try:
-        return str(path.relative_to(workspace_root))
-    except ValueError:
-        return str(path)
 
 
 def _check_error(result: CheckResult, *, strict: bool) -> ArchledgerError:

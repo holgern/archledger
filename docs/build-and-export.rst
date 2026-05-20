@@ -17,6 +17,10 @@ Converter-backed exports
 - AsciiDoc source uses ``asciidoctor-pdf`` for PDF.
 - AsciiDoc source uses Asciidoctor DocBook plus ``pandoc`` for DOCX, Markdown, RST, and Textile.
 
+These export paths are supported when the external tools are installed and the
+corresponding integration checks pass. Native Markdown and AsciiDoc assembly
+remain the lowest-friction path because they do not depend on external converters.
+
 Source migration
 ----------------
 

@@ -678,6 +678,35 @@ def test_check_warns_for_missing_directory_source_ref(tmp_path: Path) -> None:
     )
 
 
+def test_check_warns_for_backslash_source_ref_path(tmp_path: Path) -> None:
+    init_project(tmp_path)
+    runner.invoke(
+        app,
+        ["--root", str(tmp_path), "new", "white-box", "--title", "Tracking layer"],
+    )
+    record_path = (
+        tmp_path / ".archledger" / "records" / "building_blocks" / "white_box_0001.adoc"
+    )
+    record_path.write_text(
+        record_path.read_text(encoding="utf-8").replace(
+            "\n---\n\n",
+            "\nsource_refs:\n  - src\\module.py\n---\n\n",
+            1,
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(app, ["--root", str(tmp_path), "--json", "check"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    messages = [item["message"] for item in payload["result"]["warnings"]]
+    assert (
+        "Record white_box_0001 source_refs entry 1 path must use POSIX separators:"
+        " src\\module.py" in messages
+    )
+
+
 def test_list_excludes_draft_by_default(tmp_path: Path) -> None:
     init_project(tmp_path)
     runner.invoke(

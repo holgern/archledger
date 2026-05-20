@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
@@ -8,11 +7,11 @@ from typing import cast
 from jinja2 import Environment, PackageLoader, select_autoescape
 
 from archledger import __version__
+from archledger.checks import content_warnings
 from archledger.errors import StorageError, ValidationError
 from archledger.model import (
     CURRENT_SOURCE_SCHEMA_VERSION,
     MAJOR_SECTION_SPECS,
-    PLACEHOLDER_SNIPPETS,
     RECORD_TYPE_TO_DEFAULT_SECTION,
     RECORD_TYPE_TO_DIR,
     RECORD_TYPE_TO_FILENAME_PREFIX,
@@ -20,7 +19,6 @@ from archledger.model import (
     VALID_BODY_FORMATS,
     ArchitectureRecord,
     SectionSpec,
-    SourceRef,
     filename_for,
     is_visible_status,
     normalize_kind,
@@ -30,6 +28,7 @@ from archledger.model import (
     section_filename_for,
     validate_record,
 )
+from archledger.source_refs import normalize_source_refs
 from archledger.storage.common import ensure_dir, utc_now_iso, write_text
 from archledger.storage.frontmatter import (
     FrontMatterError,
@@ -45,11 +44,6 @@ from archledger.storage.meta import (
 )
 from archledger.storage.paths import ProjectPaths
 from archledger.storage.project_config import ProjectConfig
-
-ALLOWED_CONSTRAINT_CATEGORIES = frozenset(
-    {"technical", "organizational", "regulatory", "convention"}
-)
-ALLOWED_RISK_LEVELS = frozenset({"low", "medium", "high"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -305,10 +299,7 @@ class ArchitectureRepository:
             )
 
             loaded_records.append(record)
-            warning_message = self._placeholder_warning(record)
-            if warning_message is not None:
-                findings_warnings.append(CheckFinding("warning", warning_message, path))
-            for warning_message in self._content_warnings(record):
+            for warning_message in content_warnings(record):
                 findings_warnings.append(CheckFinding("warning", warning_message, path))
 
         seen_ids: dict[str, Path] = {}
@@ -340,36 +331,6 @@ class ArchitectureRepository:
                     CheckFinding(
                         "warning",
                         f"Draft record {record.id} is excluded from the default build.",
-                        record.path,
-                    )
-                )
-            if record.type == "adr" and not _non_empty_sequence(
-                record.metadata.get("deciders")
-            ):
-                findings_warnings.append(
-                    CheckFinding(
-                        "warning",
-                        f"ADR {record.id} has no deciders.",
-                        record.path,
-                    )
-                )
-            if record.type == "risk" and not _non_empty_text(
-                record.metadata.get("mitigation")
-            ):
-                findings_warnings.append(
-                    CheckFinding(
-                        "warning",
-                        f"Risk {record.id} has no mitigation.",
-                        record.path,
-                    )
-                )
-            if record.type == "glossary_term" and not _non_empty_text(
-                record.metadata.get("definition")
-            ):
-                findings_warnings.append(
-                    CheckFinding(
-                        "warning",
-                        f"Glossary term {record.id} has no definition.",
                         record.path,
                     )
                 )
@@ -564,7 +525,7 @@ class ArchitectureRepository:
             path=path,
             metadata=metadata,
             body=body,
-            source_refs=_normalize_source_refs(
+            source_refs=normalize_source_refs(
                 cast(str, record_id),
                 metadata.get("source_refs"),
                 workspace_root=self.paths.workspace_root,
@@ -596,22 +557,6 @@ class ArchitectureRepository:
             ),
         )
         write_storage_meta(self.paths.storage_meta_path, refreshed_meta)
-
-    def _placeholder_warning(self, record: ArchitectureRecord) -> str | None:
-        if record.type == "section":
-            return None
-        stripped_body = record.body.strip()
-        if not stripped_body:
-            return None
-        if any(snippet in stripped_body for snippet in PLACEHOLDER_SNIPPETS):
-            return f"Record body is placeholder text for {record.id}."
-        return None
-
-    def _content_warnings(self, record: ArchitectureRecord) -> list[str]:
-        checker = _CONTENT_WARNING_CHECKERS.get(record.type)
-        warnings = [] if checker is None else checker(record)
-        warnings.extend(self._body_syntax_warnings(record))
-        return warnings
 
     def _source_contract_findings(
         self,
@@ -669,7 +614,7 @@ class ArchitectureRepository:
                 else:
                     warnings.append(message)
 
-        _, source_ref_warnings = _normalize_source_refs(
+        _, source_ref_warnings = normalize_source_refs(
             record.id,
             record.metadata.get("source_refs"),
             workspace_root=self.paths.workspace_root,
@@ -677,183 +622,6 @@ class ArchitectureRepository:
         warnings.extend(source_ref_warnings)
 
         return errors, warnings
-
-    def _body_syntax_warnings(self, record: ArchitectureRecord) -> list[str]:
-        body_format_value = record.metadata.get(
-            "body_format", self.config.source_format
-        )
-        if not isinstance(body_format_value, str):
-            return []
-        body_format = body_format_value.strip().lower()
-        if body_format == "markdown":
-            if "[discrete]" in record.body and "\n===" in record.body:
-                return [
-                    f"Markdown record {record.id} contains "
-                    "AsciiDoc-style discrete headings."
-                ]
-            return []
-        if body_format == "asciidoc":
-            if any(
-                line.startswith("## ")
-                for line in record.body.splitlines()
-                if not line.startswith("```")
-            ):
-                return [f"AsciiDoc record {record.id} contains Markdown headings."]
-        return []
-
-
-def _normalize_source_refs(
-    record_id: str,
-    value: object,
-    *,
-    workspace_root: Path,
-) -> tuple[tuple[SourceRef, ...], list[str]]:
-    if value is None:
-        return (), []
-    if not isinstance(value, list):
-        return (), [f"Record {record_id} source_refs must be a list."]
-
-    refs: list[SourceRef] = []
-    warnings: list[str] = []
-    for index, entry in enumerate(value, start=1):
-        normalized_ref, entry_warnings = _normalize_source_ref_entry(
-            record_id,
-            entry,
-            index=index,
-            workspace_root=workspace_root,
-        )
-        warnings.extend(entry_warnings)
-        if normalized_ref is not None:
-            refs.append(normalized_ref)
-    return tuple(refs), warnings
-
-
-def _normalize_source_ref_entry(
-    record_id: str,
-    entry: object,
-    *,
-    index: int,
-    workspace_root: Path,
-) -> tuple[SourceRef | None, list[str]]:
-    if isinstance(entry, str):
-        path_text, _, symbol = entry.partition("#")
-        symbols = () if not symbol else (symbol,)
-        return _build_source_ref(
-            record_id,
-            path_text,
-            symbols,
-            "",
-            index=index,
-            workspace_root=workspace_root,
-        )
-
-    if not isinstance(entry, dict):
-        return (
-            None,
-            [
-                f"Record {record_id} source_refs entry {index} "
-                "must be a string or mapping."
-            ],
-        )
-
-    raw_path = entry.get("path")
-    raw_symbols = entry.get("symbols", ())
-    raw_reason = entry.get("reason", "")
-    if not isinstance(raw_symbols, list) and not isinstance(raw_symbols, tuple):
-        return (
-            None,
-            [
-                f"Record {record_id} source_refs entry {index} "
-                "symbols must be a list of strings."
-            ],
-        )
-    symbol_list: list[str] = []
-    for symbol in raw_symbols:
-        if not isinstance(symbol, str) or not symbol.strip():
-            return (
-                None,
-                [
-                    f"Record {record_id} source_refs entry {index} "
-                    "symbols must contain only non-empty strings."
-                ],
-            )
-        symbol_list.append(symbol.strip())
-    if not isinstance(raw_reason, str):
-        return (
-            None,
-            [f"Record {record_id} source_refs entry {index} reason must be a string."],
-        )
-    return _build_source_ref(
-        record_id,
-        raw_path,
-        tuple(symbol_list),
-        raw_reason.strip(),
-        index=index,
-        workspace_root=workspace_root,
-    )
-
-
-def _build_source_ref(
-    record_id: str,
-    raw_path: object,
-    symbols: tuple[str, ...],
-    reason: str,
-    *,
-    index: int,
-    workspace_root: Path,
-) -> tuple[SourceRef | None, list[str]]:
-    if not isinstance(raw_path, str) or not raw_path.strip():
-        return (
-            None,
-            [
-                f"Record {record_id} source_refs entry {index} "
-                "must define a non-empty path."
-            ],
-        )
-    original_path = raw_path.strip()
-    is_directory_ref = original_path.endswith("/")
-    normalized_path = original_path.rstrip("/")
-    pure_path = Path(normalized_path)
-    if pure_path.is_absolute():
-        return (
-            None,
-            [f"Record {record_id} source_refs entry {index} path must be relative."],
-        )
-    if ".." in pure_path.parts:
-        return (
-            None,
-            [
-                f"Record {record_id} source_refs entry {index} "
-                f"path must not contain '..': {original_path}"
-            ],
-        )
-    posix_path = pure_path.as_posix()
-    if not posix_path or posix_path == ".":
-        return (
-            None,
-            [f"Record {record_id} source_refs entry {index} path must not be empty."],
-        )
-    absolute_ref = workspace_root / pure_path
-    if is_directory_ref:
-        if not absolute_ref.is_dir():
-            return (
-                None,
-                [
-                    f"Record {record_id} source_refs entry {index} "
-                    f"directory does not exist: {posix_path}/"
-                ],
-            )
-    elif not absolute_ref.exists():
-        return (
-            None,
-            [
-                f"Record {record_id} source_refs entry {index} "
-                f"path does not exist: {posix_path}"
-            ],
-        )
-    if is_directory_ref:
-        posix_path = f"{posix_path}/"
-    return (SourceRef(path=posix_path, symbols=symbols, reason=reason), [])
 
 
 def _section_document(
@@ -883,181 +651,3 @@ def _section_document(
         "",
     ]
     return "\n".join(lines)
-
-
-def _non_empty_sequence(value: object) -> bool:
-    return isinstance(value, list) and any(str(item).strip() for item in value)
-
-
-def _non_empty_text(value: object) -> bool:
-    return isinstance(value, str) and bool(value.strip())
-
-
-def _contains_adr_sections(body: str) -> bool:
-    body_lower = body.lower()
-    return all(
-        any(heading in body_lower for heading in headings)
-        for headings in (
-            ("## context", "=== context"),
-            ("## decision", "=== decision"),
-            ("## consequences", "=== consequences"),
-        )
-    )
-
-
-def _looks_measurable(value: str) -> bool:
-    lowered = value.lower()
-    if any(char.isdigit() for char in lowered):
-        return True
-    indicators = (
-        "%",
-        "percent",
-        "ms",
-        "millisecond",
-        "second",
-        "minute",
-        "hour",
-        "count",
-        "byte",
-        "identical",
-        "latency",
-        "throughput",
-        "less than",
-        "greater than",
-        "at least",
-        "at most",
-        "zero",
-        "one",
-        "two",
-    )
-    return any(indicator in lowered for indicator in indicators)
-
-
-def _quality_goal_warnings(record: ArchitectureRecord) -> list[str]:
-    if _non_empty_text(record.metadata.get("scenario")):
-        return []
-    return [f"Quality goal {record.id} has no scenario."]
-
-
-def _stakeholder_warnings(record: ArchitectureRecord) -> list[str]:
-    if _non_empty_sequence(record.metadata.get("expectations")):
-        return []
-    return [f"Stakeholder {record.id} has no expectations."]
-
-
-def _constraint_warnings(record: ArchitectureRecord) -> list[str]:
-    warnings: list[str] = []
-    if not _non_empty_text(record.metadata.get("impact")):
-        warnings.append(f"Constraint {record.id} has no impact.")
-    category = record.metadata.get("category")
-    if category not in ALLOWED_CONSTRAINT_CATEGORIES:
-        warnings.append(f"Constraint {record.id} has unsupported category: {category}")
-    return warnings
-
-
-def _context_interface_warnings(record: ArchitectureRecord) -> list[str]:
-    warnings: list[str] = []
-    if not _non_empty_text(record.metadata.get("partner")):
-        warnings.append(f"Context interface {record.id} has no partner.")
-    if not any(
-        _non_empty_sequence(record.metadata.get(field))
-        for field in ("inputs", "outputs", "channels")
-    ):
-        warnings.append(
-            f"Context interface {record.id} has no inputs, outputs, or channels."
-        )
-    return warnings
-
-
-def _white_box_warnings(record: ArchitectureRecord) -> list[str]:
-    warnings: list[str] = []
-    level = record.metadata.get("level")
-    if isinstance(level, bool) or not isinstance(level, int) or level < 1:
-        warnings.append(f"White box {record.id} must have a positive integer level.")
-    parent = record.metadata.get("parent")
-    if isinstance(level, int) and level > 1 and parent in (None, "", "null"):
-        warnings.append(f"White box {record.id} at level > 1 requires a parent.")
-    return warnings
-
-
-def _black_box_warnings(record: ArchitectureRecord) -> list[str]:
-    if record.metadata.get("parent") not in (None, "", "null"):
-        return []
-    return [
-        (
-            f"Black box {record.id} should declare a parent unless it is "
-            "intentionally top-level external."
-        )
-    ]
-
-
-def _runtime_scenario_warnings(record: ArchitectureRecord) -> list[str]:
-    warnings: list[str] = []
-    if not _non_empty_sequence(record.metadata.get("participants")):
-        warnings.append(f"Runtime scenario {record.id} has no participants.")
-    if not _non_empty_text(record.metadata.get("trigger")):
-        warnings.append(f"Runtime scenario {record.id} has no trigger.")
-    return warnings
-
-
-def _infrastructure_warnings(record: ArchitectureRecord) -> list[str]:
-    warnings: list[str] = []
-    environment = record.metadata.get("environment")
-    if not _non_empty_text(environment):
-        warnings.append(f"Infrastructure {record.id} has no environment.")
-    if (
-        isinstance(environment, str)
-        and environment.strip().lower() == "production"
-        and not _non_empty_sequence(record.metadata.get("maps_building_blocks"))
-    ):
-        warnings.append(
-            f"Infrastructure {record.id} in production must map building "
-            "blocks explicitly."
-        )
-    return warnings
-
-
-def _adr_warnings(record: ArchitectureRecord) -> list[str]:
-    if _contains_adr_sections(record.body):
-        return []
-    return [
-        (
-            f"ADR {record.id} should contain Context, Decision, and "
-            "Consequences sections."
-        )
-    ]
-
-
-def _quality_scenario_warnings(record: ArchitectureRecord) -> list[str]:
-    response_measure = record.metadata.get("response_measure")
-    if not _non_empty_text(response_measure):
-        return [f"Quality scenario {record.id} has no response_measure."]
-    if isinstance(response_measure, str) and not _looks_measurable(response_measure):
-        return [f"Quality scenario {record.id} response_measure should be measurable."]
-    return []
-
-
-def _risk_warnings(record: ArchitectureRecord) -> list[str]:
-    warnings: list[str] = []
-    severity = record.metadata.get("severity")
-    probability = record.metadata.get("probability")
-    if severity not in ALLOWED_RISK_LEVELS:
-        warnings.append(f"Risk {record.id} has unsupported severity: {severity}")
-    if probability not in ALLOWED_RISK_LEVELS:
-        warnings.append(f"Risk {record.id} has unsupported probability: {probability}")
-    return warnings
-
-
-_CONTENT_WARNING_CHECKERS: dict[str, Callable[[ArchitectureRecord], list[str]]] = {
-    "quality_goal": _quality_goal_warnings,
-    "stakeholder": _stakeholder_warnings,
-    "constraint": _constraint_warnings,
-    "context_interface": _context_interface_warnings,
-    "white_box": _white_box_warnings,
-    "black_box": _black_box_warnings,
-    "runtime_scenario": _runtime_scenario_warnings,
-    "infrastructure": _infrastructure_warnings,
-    "adr": _adr_warnings,
-    "quality_scenario": _quality_scenario_warnings,
-    "risk": _risk_warnings,
-}
