@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 import sys
 from dataclasses import dataclass, field
@@ -49,6 +50,7 @@ _ALLOWED_BUILD_KEYS = {
     "reference_docx",
     "outputs",
 }
+_ALLOWED_BUILD_OUTPUT_KEYS = {"enabled", "pdf_engine", "reference_docx", "tool"}
 _ALLOWED_ARC42_KEYS = {"template_version", "language", "title", "include_help"}
 _ALLOWED_SKILL_KEYS = {"installed", "path"}
 _ALLOWED_TRACKING_KEYS = {
@@ -227,6 +229,76 @@ def render_default_config(
             "",
         ]
     )
+
+
+def render_project_config(config: ProjectConfig) -> str:
+    lines = [
+        "# Project-local archledger configuration.",
+        "# This file lives in the source project root.",
+        f"config_version = {config.config_version}",
+        f"archledger_dir = {_toml_string(config.archledger_dir)}",
+        "",
+        "# Stable project identity. Commit this with your source tree.",
+        f"project_uuid = {_toml_string(config.project_uuid)}",
+        f"project_name = {_toml_string(config.project_name)}",
+        "",
+        "[source]",
+        f"format = {_toml_string(config.source_format)}",
+        f"front_matter = {_toml_string(config.front_matter)}",
+        f"section_extension = {_toml_string(config.section_extension)}",
+        f"record_extension = {_toml_string(config.record_extension)}",
+        f"schema_version = {config.source_schema_version}",
+        "",
+        "[build]",
+        f"default_output = {_toml_string(config.build_default_output)}",
+        f"default_format = {_toml_string(config.build_default_format)}",
+        f"default_output_dir = {_toml_string(config.build_output_dir)}",
+        f"include_draft = {_toml_bool(config.build_include_draft)}",
+        f"include_superseded = {_toml_bool(config.build_include_superseded)}",
+        f"strict = {_toml_bool(config.build_strict)}",
+        f"keep_intermediate = {_toml_bool(config.build_keep_intermediate)}",
+        f"converter = {_toml_string(config.build_converter)}",
+        f"pdf_engine = {_toml_string(config.build_pdf_engine)}",
+        f"reference_docx = {_toml_string(config.build_reference_docx)}",
+        "",
+    ]
+    lines.extend(_render_build_output_tables(config.build_outputs))
+    lines.extend(
+        [
+            "[arc42]",
+            f"template_version = {_toml_string(config.arc42_template_version)}",
+            f"language = {_toml_string(config.arc42_language)}",
+            f"title = {_toml_string(config.arc42_title)}",
+            f"include_help = {_toml_bool(config.arc42_include_help)}",
+            "",
+            "[skill]",
+            f"installed = {_toml_bool(config.skill_installed)}",
+            f"path = {_toml_string(config.skill_path)}",
+            "",
+            "[tracking]",
+            f"enabled = {_toml_bool(config.tracking_enabled)}",
+            f"state_file = {_toml_string(config.tracking_state_file)}",
+            f"scanner = {_toml_string(config.tracking_scanner)}",
+            "include = [",
+        ]
+    )
+    lines.extend(f"  {_toml_string(item)}," for item in config.tracking_include)
+    lines.extend(
+        [
+            "]",
+            "exclude = [",
+        ]
+    )
+    lines.extend(f"  {_toml_string(item)}," for item in config.tracking_exclude)
+    lines.extend(
+        [
+            "]",
+            f"max_file_bytes = {config.tracking_max_file_bytes}",
+            f"hash_algorithm = {_toml_string(config.tracking_hash_algorithm)}",
+            "",
+        ]
+    )
+    return "\n".join(lines)
 
 
 def load_project_config(path: Path) -> ProjectConfig:
@@ -676,10 +748,77 @@ def _require_positive_int(value: object, field_name: str) -> int:
 def _normalize_build_outputs(value: dict[str, object]) -> dict[str, dict[str, object]]:
     normalized: dict[str, dict[str, object]] = {}
     for output_name, raw_config in value.items():
+        normalized_name = str(output_name).strip().lower()
+        if normalized_name not in VALID_OUTPUT_FORMATS:
+            raise ConfigError(
+                f"build.outputs.{output_name} is not a supported output format."
+            )
         if not isinstance(raw_config, dict):
             raise ConfigError(f"build.outputs.{output_name} must be a TOML table.")
-        normalized[output_name] = dict(raw_config)
+        unknown_keys = sorted(set(raw_config) - _ALLOWED_BUILD_OUTPUT_KEYS)
+        if unknown_keys:
+            raise ConfigError(
+                f"Unknown keys in build.outputs.{output_name}: "
+                + ", ".join(unknown_keys)
+            )
+        output_config: dict[str, object] = {}
+        enabled = raw_config.get("enabled")
+        if enabled is not None:
+            output_config["enabled"] = _require_bool(
+                enabled,
+                f"build.outputs.{normalized_name}.enabled",
+            )
+        tool = raw_config.get("tool")
+        if tool is not None:
+            output_config["tool"] = _require_converter(
+                tool,
+                f"build.outputs.{normalized_name}.tool",
+            )
+        pdf_engine = raw_config.get("pdf_engine")
+        if pdf_engine is not None:
+            output_config["pdf_engine"] = _require_optional_string(
+                pdf_engine,
+                f"build.outputs.{normalized_name}.pdf_engine",
+            )
+        reference_docx = raw_config.get("reference_docx")
+        if reference_docx is not None:
+            output_config["reference_docx"] = _require_optional_string(
+                reference_docx,
+                f"build.outputs.{normalized_name}.reference_docx",
+            )
+        normalized[normalized_name] = output_config
     return normalized
+
+
+def _render_build_output_tables(
+    build_outputs: dict[str, dict[str, object]],
+) -> list[str]:
+    lines: list[str] = []
+    for output_name in sorted(build_outputs):
+        output_config = build_outputs[output_name]
+        lines.append(f"[build.outputs.{output_name}]")
+        if "enabled" in output_config:
+            lines.append(f"enabled = {_toml_bool(bool(output_config['enabled']))}")
+        if "tool" in output_config:
+            lines.append(f"tool = {_toml_string(str(output_config['tool']))}")
+        if "pdf_engine" in output_config:
+            lines.append(
+                f"pdf_engine = {_toml_string(str(output_config['pdf_engine']))}"
+            )
+        if "reference_docx" in output_config:
+            lines.append(
+                "reference_docx = " + _toml_string(str(output_config["reference_docx"]))
+            )
+        lines.append("")
+    return lines
+
+
+def _toml_bool(value: bool) -> str:
+    return "true" if value else "false"
+
+
+def _toml_string(value: str) -> str:
+    return json.dumps(value)
 
 
 def _validate_uuid(value: str) -> str:

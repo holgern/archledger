@@ -1,28 +1,51 @@
 # archledger
 
-`archledger` is an arc42-oriented architecture documentation ledger that stores canonical source fragments as YAML front matter plus either Markdown or AsciiDoc bodies. It keeps a small project-local `archledger.toml` in the workspace and stores human-editable section and record sources under a configurable `archledger_dir`.
+`archledger` is an arc42-oriented architecture documentation ledger. It stores architecture knowledge as small, reviewable source fragments with YAML front matter and Markdown or AsciiDoc bodies. The fragments are the source of truth; complete documents under `.archledger/build/` are generated artifacts.
 
 ## What archledger is
 
 `archledger` is intentionally small:
 
 - project-local config discovery from `archledger.toml` or `.archledger.toml`
-- dual-source canonical fragments in Markdown or AsciiDoc
-- a compact Typer CLI for init, read, record creation, validation, migration, and builds
-- deterministic native document assembly with optional export formats
+- canonical source fragments in Markdown or AsciiDoc
+- a compact Typer CLI for init, read, record creation, validation, source drift tracking, migration, and builds
+- deterministic native document assembly with optional converter-backed exports
 
-It is **not** a task tracker, workflow engine, lock manager, or sync tool.
+It is **not** a task tracker, workflow engine, lock manager, or sync service.
+
+## When to use it
+
+Use `archledger` when you want architecture documentation that can be updated incrementally by humans or coding agents, reviewed in Git, and assembled into arc42-style documents on demand.
 
 ## Install
 
+Editable development install:
+
 ```bash
-python -m pip install -e .
-archledger --version
+python -m pip install -e ".[dev]"
 ```
+
+Normal user install:
+
+```bash
+python -m pip install .
+```
+
+Docs build support:
+
+```bash
+python -m pip install -e ".[docs]"
+```
+
+Optional converter tools:
+
+- `pandoc` for Markdown-source exports and some AsciiDoc exports
+- `asciidoctor` for native AsciiDoc HTML and DocBook conversion
+- `asciidoctor-pdf` for native AsciiDoc PDF output
 
 ## Quick start
 
-Markdown project:
+### Markdown source
 
 ```bash
 archledger init --source-format markdown
@@ -31,7 +54,7 @@ archledger --json read --include-body
 archledger build --format markdown
 ```
 
-AsciiDoc project:
+### AsciiDoc source
 
 ```bash
 archledger init --source-format asciidoc
@@ -40,24 +63,15 @@ archledger --json read --include-body
 archledger build --format asciidoc
 ```
 
-Useful supporting commands:
+## Core concepts
 
-```bash
-archledger status
-archledger where
-archledger --json changed
-archledger list --include-draft
-archledger show black_box_0001
-archledger read --include-body --include-draft
-archledger snapshot --reason after-archledger-update
-archledger convert-sources --to asciidoc --write
-```
+### Workspace config
 
-## Canonical source model
+By default, `archledger init` writes `archledger.toml` at the workspace root and stores state under `.archledger/`. Relative `archledger_dir` values are resolved from the config file location.
 
-Markdown and AsciiDoc are both first-class source formats. The individual section and record fragments under `archledger_dir` are the source of truth. Generated complete documents under `.archledger/build/` are derived artifacts and must not be edited as canonical source.
+### Source fragments
 
-Example front matter:
+Each section file and record file has YAML front matter plus a body in the configured dialect. Example:
 
 ```yaml
 ---
@@ -75,9 +89,41 @@ updated_at: "2026-05-20T00:00:00Z"
 ---
 ```
 
-## Reading docs without exporting
+`body_format` must match the project `source.format` unless you explicitly use the migration escape hatch during a manual source conversion.
 
-Use `read` to inspect the current source state directly:
+### Sections and records
+
+Sections are the arc42 chapter skeleton. Records hold individual requirements, decisions, building blocks, risks, and other architecture facts. Use the CLI to allocate paths and ids, then edit the generated fragment.
+
+### Generated outputs
+
+Files under `.archledger/build/` are generated output. Do not edit them as canonical source.
+
+## Record types
+
+| Kind | Common aliases | Default section |
+| --- | --- | --- |
+| `requirement` | `requirement` | `introduction_and_goals` |
+| `stakeholder` | `stakeholder` | `introduction_and_goals` |
+| `quality_goal` | `quality-goal` | `introduction_and_goals` |
+| `constraint` | `constraint` | `architecture_constraints` |
+| `context_interface` | `context-interface` | `context_and_scope` |
+| `strategy_item` | `strategy-item` | `solution_strategy` |
+| `white_box` | `white-box` | `building_block_view` |
+| `black_box` | `black-box` | `building_block_view` |
+| `interface` | `interface` | `building_block_view` |
+| `runtime_scenario` | `runtime` | `runtime_view` |
+| `infrastructure` | `infrastructure` | `deployment_view` |
+| `concept` | `concept` | `cross_cutting_concepts` |
+| `adr` | `adr` | `architecture_decisions` |
+| `quality_requirement` | `quality-requirement` | `quality_requirements` |
+| `quality_scenario` | `quality-scenario` | `quality_requirements` |
+| `risk` | `risk` | `risks_and_technical_debt` |
+| `glossary_term` | `glossary-term` | `glossary` |
+
+## Reading source without exporting
+
+Use `read` and the JSON commands to inspect the current source state directly:
 
 ```bash
 archledger --json where
@@ -90,27 +136,28 @@ archledger --json read --kind adr --include-body
 
 `read` does not call the build pipeline and does not create `.archledger/build` outputs.
 
-## Tracking source drift
+## Tracking implementation drift
 
-Use `snapshot` to store a workspace baseline and `changed` to inspect what has moved since that baseline without exporting any documents:
+### Snapshots
 
 ```bash
 archledger --json snapshot --reason after-archledger-update
+```
+
+`snapshot` writes `.archledger/source-state.json` by default. If `[tracking].enabled = false`, `snapshot` and `changed` fail explicitly instead of silently creating misleading tracking state.
+
+### Changed files
+
+```bash
 archledger --json changed
 archledger --json changed --include-draft
 ```
 
-`snapshot` writes `.archledger/source-state.json` by default. `changed` reports:
+`changed` reports added, modified, deleted, and possible renamed files plus impacted records and sections linked through `source_refs`.
 
-- added, modified, deleted, and possible renamed files
-- impacted archledger records and sections linked through `source_refs`
-- changed files that are still unlinked so an agent can decide whether to update or add architecture records
+### Linking `source_refs`
 
-`changed` is read-only. Refresh the snapshot only after the architecture fragments reflect the current source state.
-
-### Linking records to source files
-
-Add optional `source_refs` metadata to records or section fragments when they document specific source files or directories:
+When fragments document real code or directories, add `source_refs`:
 
 ```yaml
 source_refs:
@@ -124,86 +171,133 @@ source_refs:
     reason: "Bundled templates"
 ```
 
-Paths must be relative to the workspace root. Directory refs end with `/` and match changes underneath that directory.
+Paths must be relative to the workspace root. Directory refs end with `/` and must point to an existing directory.
 
-## Build matrix
+## Building output documents
 
-| Source format | Output format                           | Tooling                  |
-| ------------- | --------------------------------------- | ------------------------ |
-| Markdown      | Markdown                                | none                     |
-| AsciiDoc      | AsciiDoc                                | none                     |
-| Markdown      | HTML, DOCX, RST, Textile, PDF, AsciiDoc | `pandoc`                 |
-| AsciiDoc      | HTML                                    | `asciidoctor`            |
-| AsciiDoc      | PDF                                     | `asciidoctor-pdf`        |
-| AsciiDoc      | DOCX, Markdown, RST, Textile            | `asciidoctor` + `pandoc` |
-
-Examples:
+### Native builds
 
 ```bash
 archledger build --format markdown
 archledger build --format asciidoc
+```
+
+### Converted builds
+
+```bash
 archledger build --format html
 archledger build --formats html,markdown
 archledger --json build --formats html,markdown
 ```
 
-Optional tool notes:
+### Tooling matrix
 
-- Markdown-source exports use `pandoc`.
-- AsciiDoc HTML uses `asciidoctor`.
-- AsciiDoc PDF uses `asciidoctor-pdf`.
-- AsciiDoc DOCX/Markdown/RST/Textile exports use Asciidoctor DocBook plus `pandoc`.
+| Source format | Output format | Tooling |
+| --- | --- | --- |
+| Markdown | Markdown | none |
+| AsciiDoc | AsciiDoc | none |
+| Markdown | HTML, DOCX, RST, Textile, PDF, AsciiDoc | `pandoc` |
+| AsciiDoc | HTML | `asciidoctor` or `pandoc` |
+| AsciiDoc | PDF | `asciidoctor-pdf` or `pandoc` |
+| AsciiDoc | DOCX, Markdown, RST, Textile | `asciidoctor` + `pandoc` |
 
-## Storage layout
+Per-output overrides live under `[build.outputs.<format>]`. Supported keys are `tool`, `pdf_engine`, `reference_docx`, and `enabled`. Supported tool values are `auto`, `pandoc`, and `asciidoctor`.
 
-By default, `archledger init` writes `archledger.toml` at the workspace root and stores state under `.archledger/`.
+## Migrating source dialects
 
-```text
-archledger.toml
-.archledger/
-  storage.yaml
-  sections/
-    01_introduction_and_goals.md|adoc
-    ...
-    12_glossary.md|adoc
-  records/
-    requirements/
-    building_blocks/
-    concepts/
-    constraints/
-    contexts/
-    decisions/
-    deployment/
-    glossary/
-    quality_goals/
-    quality_requirements/
-    quality_scenarios/
-    risks/
-    runtime/
-    stakeholders/
-    strategy/
-  build/
-    architecture.md
-    architecture.adoc
-    architecture.html
-    architecture.pdf
-    architecture.docx
-    architecture.rst
-    architecture.textile
+`convert-sources` is a source migration command, not a general build/export command. It currently supports Markdown-source projects to AsciiDoc-source projects only.
+
+Dry-run the migration first:
+
+```bash
+archledger convert-sources --to asciidoc
 ```
 
-Relative `archledger_dir` values are resolved from the config file directory. Absolute paths are used as-is.
+Write the migration:
 
-## Agent guidance
+```bash
+archledger convert-sources --to asciidoc --write
+```
 
-- Prefer `--json` for automation.
-- Run `archledger --json changed` before broad source or documentation reads when the user asks to refresh architecture docs.
-- Read source fragments directly with `archledger --json read --include-body` before building artifacts.
-- Use `archledger check` before `archledger build` when mutating records programmatically.
-- After a successful documentation update, run `archledger --json snapshot --reason after-archledger-update`.
-- Treat `.archledger/build/*` as generated output, not source.
-- Use `convert-sources` only when the user explicitly wants a dialect migration.
+`--write` now requires `pandoc` by default so the migrated `.adoc` files and the resulting `source.format = "asciidoc"` config stay consistent. If you intentionally want a temporary mixed-body migration, use:
+
+```bash
+archledger convert-sources --to asciidoc --write --allow-mixed-body-format
+```
+
+Use this escape hatch only when you explicitly accept a manual cleanup step. Run the command from a clean VCS state.
+
+## Configuration reference
+
+Example config v5:
+
+```toml
+config_version = 5
+archledger_dir = ".archledger"
+project_uuid = "..."
+project_name = "my-project"
+
+[source]
+format = "markdown"       # markdown | asciidoc
+front_matter = "yaml"
+section_extension = ".md" # .md or .adoc
+record_extension = ".md"
+schema_version = 2
+
+[build]
+default_output = "architecture.md"
+default_format = "markdown"
+default_output_dir = "build"
+include_draft = false
+include_superseded = false
+strict = false
+keep_intermediate = false
+converter = "auto"        # auto | pandoc | asciidoctor
+pdf_engine = ""
+reference_docx = ""
+
+[tracking]
+enabled = true
+state_file = "source-state.json"
+scanner = "auto"          # auto | git | filesystem
+```
+
+## CLI reference for agents
+
+For coding agents, prefer this loop:
+
+1. `archledger --json where`
+2. `archledger --json changed`
+3. `archledger --json read --include-body --include-draft`
+4. Edit only source fragments under `archledger_dir/sections` and `archledger_dir/records`
+5. `archledger --json check`
+6. Build only when the user asks for an exported artifact
+7. `archledger --json snapshot --reason after-archledger-update` after the docs have been updated and validated
+
+## Development
+
+Run the standard checks:
+
+```bash
+python -m pytest -q
+python -m ruff check .
+python -m ruff format --check .
+python -m mypy archledger
+python -m sphinx -b html docs docs/_build/html
+```
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| `No archledger.toml found` | Command ran outside a configured workspace. | Run from the project tree or pass `--root`. |
+| Draft records missing from builds | Drafts are excluded by default. | Use `--include-draft` or promote the record status. |
+| Build blocked by warnings | `--strict` treats warnings as failures. | Fix the warnings or build without `--strict`. |
+| Converter executable not found | Requested output needs `pandoc`, `asciidoctor`, or `asciidoctor-pdf`. | Install the required tool or change the per-output converter config. |
+| `changed` says no baseline found | No source snapshot exists yet. | Run `archledger --json snapshot --reason after-archledger-update` after the docs are current. |
+| `snapshot` or `changed` says tracking is disabled | `[tracking].enabled = false`. | Re-enable tracking or avoid tracking commands for that workspace. |
+| `convert-sources --write` fails without `pandoc` | Write mode is strict by default. | Install `pandoc` or re-run with `--allow-mixed-body-format` if you accept a manual cleanup step. |
 
 ## Skill
 
-The repository-provided agent protocol lives at `skills/archledger/SKILL.md`.
+The repository-provided coding-agent protocol lives at `skills/archledger/SKILL.md`.

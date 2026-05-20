@@ -139,9 +139,10 @@ class ArchitectureRepository:
                 )
                 created_paths.append(section_path)
 
-        meta = default_storage_meta(self.config.project_uuid, __version__)
-        write_storage_meta(self.paths.storage_meta_path, meta)
-        created_paths.append(self.paths.storage_meta_path)
+        if not self.paths.storage_meta_path.exists() or overwrite:
+            meta = default_storage_meta(self.config.project_uuid, __version__)
+            write_storage_meta(self.paths.storage_meta_path, meta)
+            created_paths.append(self.paths.storage_meta_path)
 
         return InitResult(
             workspace_root=self.paths.workspace_root,
@@ -766,7 +767,7 @@ def _normalize_source_ref_entry(
                 "symbols must be a list of strings."
             ],
         )
-    symbols: list[str] = []
+    symbol_list: list[str] = []
     for symbol in raw_symbols:
         if not isinstance(symbol, str) or not symbol.strip():
             return (
@@ -776,7 +777,7 @@ def _normalize_source_ref_entry(
                     "symbols must contain only non-empty strings."
                 ],
             )
-        symbols.append(symbol.strip())
+        symbol_list.append(symbol.strip())
     if not isinstance(raw_reason, str):
         return (
             None,
@@ -785,7 +786,7 @@ def _normalize_source_ref_entry(
     return _build_source_ref(
         record_id,
         raw_path,
-        tuple(symbols),
+        tuple(symbol_list),
         raw_reason.strip(),
         index=index,
         workspace_root=workspace_root,
@@ -832,7 +833,17 @@ def _build_source_ref(
             None,
             [f"Record {record_id} source_refs entry {index} path must not be empty."],
         )
-    if not is_directory_ref and not (workspace_root / pure_path).exists():
+    absolute_ref = workspace_root / pure_path
+    if is_directory_ref:
+        if not absolute_ref.is_dir():
+            return (
+                None,
+                [
+                    f"Record {record_id} source_refs entry {index} "
+                    f"directory does not exist: {posix_path}/"
+                ],
+            )
+    elif not absolute_ref.exists():
         return (
             None,
             [

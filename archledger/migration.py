@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import shutil
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from archledger.errors import RenderError
+from archledger.model import (
+    default_document_filename_for_output_format,
+    native_output_format_for_source_format,
+)
 from archledger.storage.common import write_text
 from archledger.storage.frontmatter import (
     iter_source_files,
@@ -13,7 +17,7 @@ from archledger.storage.frontmatter import (
     write_front_matter_document,
 )
 from archledger.storage.paths import ProjectPaths
-from archledger.storage.project_config import ProjectConfig
+from archledger.storage.project_config import ProjectConfig, render_project_config
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,6 +44,7 @@ def convert_sources(
     target_format: str,
     write: bool,
     replace: bool,
+    allow_mixed_body_format: bool = False,
 ) -> MigrationResult:
     normalized_target = target_format.strip().lower()
     if normalized_target != "asciidoc":
@@ -54,6 +59,12 @@ def convert_sources(
     warnings: list[str] = []
     converted: list[ConvertedSource] = []
     pandoc = shutil.which("pandoc")
+    mixed_body_format_allowed = allow_mixed_body_format or not write
+    if write and pandoc is None and not allow_mixed_body_format:
+        raise RenderError(
+            "Cannot write an AsciiDoc source migration without pandoc.\n"
+            "Install pandoc or re-run with --allow-mixed-body-format."
+        )
 
     source_paths = [
         *iter_source_files(paths.sections_dir, (config.section_extension,)),
@@ -61,7 +72,11 @@ def convert_sources(
     ]
     for source_path in source_paths:
         metadata, body = read_front_matter_document(source_path)
-        converted_body, body_format, warning = _convert_body(body, pandoc)
+        converted_body, body_format, warning = _convert_body(
+            body,
+            pandoc,
+            allow_mixed_body_format=mixed_body_format_allowed,
+        )
         if warning is not None:
             warnings.append(f"{source_path}: {warning}")
         output_path = source_path.with_suffix(".adoc")
@@ -87,7 +102,7 @@ def convert_sources(
             source_path.unlink()
 
     if write:
-        write_text(paths.config_path, _render_migrated_config(config))
+        write_text(paths.config_path, render_project_config(_migrated_config(config)))
 
     return MigrationResult(
         target_format=normalized_target,
@@ -102,8 +117,15 @@ def convert_sources(
 def _convert_body(
     body: str,
     pandoc: str | None,
+    *,
+    allow_mixed_body_format: bool,
 ) -> tuple[str, str, str | None]:
     if pandoc is None:
+        if not allow_mixed_body_format:
+            raise RenderError(
+                "Cannot write an AsciiDoc source migration without pandoc.\n"
+                "Install pandoc or re-run with --allow-mixed-body-format."
+            )
         return (
             body,
             "markdown",
@@ -127,42 +149,25 @@ def _convert_body(
     return (result.stdout, "asciidoc", None)
 
 
-def _render_migrated_config(config: ProjectConfig) -> str:
-    return "\n".join(
-        [
-            "# Project-local archledger configuration.",
-            "# This file lives in the source project root.",
-            "config_version = 3",
-            f'archledger_dir = "{config.archledger_dir}"',
-            "",
-            "# Stable project identity. Commit this with your source tree.",
-            f'project_uuid = "{config.project_uuid}"',
-            f'project_name = "{config.project_name}"',
-            "",
-            "[source]",
-            'format = "asciidoc"',
-            'front_matter = "yaml"',
-            'section_extension = ".adoc"',
-            'record_extension = ".adoc"',
-            "",
-            "[build]",
-            'default_format = "asciidoc"',
-            f"include_draft = {'true' if config.build_include_draft else 'false'}",
-            (
-                "include_superseded = "
-                f"{'true' if config.build_include_superseded else 'false'}"
-            ),
-            f"strict = {'true' if config.build_strict else 'false'}",
-            "",
-            "[arc42]",
-            f'template_version = "{config.arc42_template_version}"',
-            f'language = "{config.arc42_language}"',
-            f'title = "{config.arc42_title}"',
-            f"include_help = {'true' if config.arc42_include_help else 'false'}",
-            "",
-            "[skill]",
-            f"installed = {'true' if config.skill_installed else 'false'}",
-            f'path = "{config.skill_path}"',
-            "",
-        ]
+def _migrated_config(config: ProjectConfig) -> ProjectConfig:
+    previous_native_format = native_output_format_for_source_format(
+        config.source_format
+    )
+    default_format = config.build_default_format
+    default_output = config.build_default_output
+    if default_format == previous_native_format:
+        default_format = "asciidoc"
+        previous_native_output = default_document_filename_for_output_format(
+            previous_native_format
+        )
+        if default_output == previous_native_output:
+            default_output = default_document_filename_for_output_format("asciidoc")
+    return replace(
+        config,
+        config_version=max(config.config_version, 5),
+        source_format="asciidoc",
+        section_extension=".adoc",
+        record_extension=".adoc",
+        build_default_output=default_output,
+        build_default_format=default_format,
     )

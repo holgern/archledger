@@ -121,9 +121,15 @@ Rules:
 ## Reading and editing rules
 
 - Prefer `archledger --json changed` before broad repository reads when the user wants architecture docs refreshed.
+- Always run `archledger --json changed` before refreshing architecture docs unless the user only asked to inspect a single known record.
 - Prefer `archledger --json read --include-body` over `archledger build` when you need the current architecture state.
 - Read the repository evidence before writing documentation: README, tests, package metadata, CI, deployment files, and design notes.
 - Update section files and record files directly; never patch generated complete documents as the source of truth.
+- Never edit `.archledger/build/*`; it is generated build output only.
+- Use `source_refs` when a record or section describes concrete files, symbols, or directories.
+- Prefer `proposed` for newly inferred records unless the user explicitly says the content is accepted.
+- Run `archledger check` after record edits.
+- Build only when the user explicitly asks for an exported artifact or when converter-backed output validation is part of the task.
 - Keep assumptions explicit and use `draft` or `proposed` when evidence is incomplete.
 
 ## Build and export matrix
@@ -155,6 +161,7 @@ archledger --json snapshot --reason after-archledger-update
 ```
 
 Choose the native build that matches the project source format. Use optional export builds only when the user asked for those artifacts or when validating converter-backed formats.
+Do not run `snapshot` until the documentation updates have been applied and validated.
 
 For automation, prefer JSON:
 

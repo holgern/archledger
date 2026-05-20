@@ -457,6 +457,10 @@ def snapshot(
         config: ProjectConfig,
     ) -> dict[str, object]:
         repo.status()
+        if not config.tracking_enabled:
+            raise StorageError(
+                "Source tracking is disabled by [tracking].enabled = false."
+            )
         existing_state = _load_tracking_baseline(paths, config)
         scanned_state = scan_workspace(paths, config, reason=reason)
         if existing_state is not None:
@@ -481,6 +485,10 @@ def changed(
         config: ProjectConfig,
     ) -> dict[str, object]:
         repo.status()
+        if not config.tracking_enabled:
+            raise StorageError(
+                "Source tracking is disabled by [tracking].enabled = false."
+            )
         baseline = _load_tracking_baseline(paths, config)
         current = scan_workspace(paths, config, reason="current-scan")
         changes = diff_source_states(baseline, current)
@@ -545,6 +553,16 @@ def convert_sources_command(
     to: Annotated[str, typer.Option("--to")] = "asciidoc",
     write: Annotated[bool, typer.Option("--write")] = False,
     replace: Annotated[bool, typer.Option("--replace")] = False,
+    allow_mixed_body_format: Annotated[
+        bool,
+        typer.Option(
+            "--allow-mixed-body-format",
+            help=(
+                "Allow writing .adoc files whose bodies remain Markdown when "
+                "pandoc is unavailable."
+            ),
+        ),
+    ] = False,
 ) -> None:
     state = _state(ctx)
 
@@ -560,6 +578,7 @@ def convert_sources_command(
             target_format=to,
             write=write,
             replace=replace,
+            allow_mixed_body_format=allow_mixed_body_format,
         )
         return {
             "target_format": result.target_format,

@@ -31,7 +31,7 @@ def test_convert_sources_requires_write_for_mutation(tmp_path: Path) -> None:
     ).exists()
 
 
-def test_convert_sources_writes_adoc_and_updates_config_without_pandoc(
+def test_convert_sources_write_requires_pandoc_unless_mixed_is_allowed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -54,6 +54,45 @@ def test_convert_sources_writes_adoc_and_updates_config_without_pandoc(
         ["--root", str(tmp_path), "convert-sources", "--to", "asciidoc", "--write"],
     )
 
+    assert result.exit_code == 1
+    assert "pandoc" in result.output.lower()
+    assert "allow-mixed-body-format" in result.output
+    assert not (
+        tmp_path / ".archledger" / "records" / "requirements" / "requirement_0001.adoc"
+    ).exists()
+
+
+def test_convert_sources_allow_mixed_body_format_without_pandoc(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    init_legacy_project(tmp_path)
+    runner.invoke(
+        app,
+        [
+            "--root",
+            str(tmp_path),
+            "new",
+            "requirement",
+            "--title",
+            "Render output",
+        ],
+    )
+    monkeypatch.setattr("archledger.migration.shutil.which", lambda name: None)
+
+    result = runner.invoke(
+        app,
+        [
+            "--root",
+            str(tmp_path),
+            "convert-sources",
+            "--to",
+            "asciidoc",
+            "--write",
+            "--allow-mixed-body-format",
+        ],
+    )
+
     assert result.exit_code == 0
     migrated_path = (
         tmp_path / ".archledger" / "records" / "requirements" / "requirement_0001.adoc"
@@ -63,7 +102,7 @@ def test_convert_sources_writes_adoc_and_updates_config_without_pandoc(
     assert "schema_version: 2" in migrated_text
     assert "body_format: markdown" in migrated_text
     config_text = (tmp_path / "archledger.toml").read_text(encoding="utf-8")
-    assert "config_version = 3" in config_text
+    assert "config_version = 5" in config_text
     assert 'format = "asciidoc"' in config_text
     assert "pandoc not found" in result.stdout
 
@@ -118,9 +157,110 @@ def test_convert_sources_uses_pandoc_when_available(
     ).read_text(encoding="utf-8")
     assert "body_format: asciidoc" in migrated_text
     assert "Converted body" in migrated_text
+    config_text = (tmp_path / "archledger.toml").read_text(encoding="utf-8")
+    assert "config_version = 5" in config_text
+    assert 'default_format = "asciidoc"' in config_text
 
 
-def test_convert_sources_replace_removes_markdown_files(tmp_path: Path) -> None:
+def test_convert_sources_preserves_v5_tracking_and_build_config(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result = runner.invoke(
+        app,
+        ["--root", str(tmp_path), "init", "--source-format", "markdown"],
+    )
+    assert result.exit_code == 0
+    config_path = tmp_path / "archledger.toml"
+    config_path.write_text(
+        config_path.read_text(encoding="utf-8").replace(
+            'default_format = "markdown"\n'
+            'default_output_dir = "build"\n'
+            "include_draft = false\n"
+            "include_superseded = false\n"
+            "strict = false\n"
+            "keep_intermediate = false\n"
+            'converter = "auto"\n',
+            'default_output = "architecture.md"\n'
+            'default_format = "markdown"\n'
+            'default_output_dir = "site-build"\n'
+            "include_draft = false\n"
+            "include_superseded = false\n"
+            "strict = false\n"
+            "keep_intermediate = true\n"
+            'converter = "pandoc"\n'
+            'pdf_engine = "tectonic"\n'
+            'reference_docx = "docs/reference.docx"\n',
+        )
+        + "\n[build.outputs.html]\n"
+        'tool = "pandoc"\n'
+        "\n[build.outputs.docx]\n"
+        'reference_docx = "docs/override.docx"\n',
+        encoding="utf-8",
+    )
+    runner.invoke(
+        app,
+        [
+            "--root",
+            str(tmp_path),
+            "new",
+            "requirement",
+            "--title",
+            "Render output",
+            "--status",
+            "accepted",
+        ],
+    )
+    monkeypatch.setattr(
+        "archledger.migration.shutil.which",
+        lambda name: "/usr/bin/pandoc",
+    )
+
+    def fake_run(
+        command: list[str],
+        *,
+        input: str,
+        check: bool,
+        capture_output: bool,
+        text: bool,
+    ) -> subprocess.CompletedProcess[str]:
+        del check, capture_output, text
+        assert command == ["/usr/bin/pandoc", "-f", "markdown", "-t", "asciidoc"]
+        assert input
+        return subprocess.CompletedProcess(command, 0, "Converted body\n", "")
+
+    monkeypatch.setattr("archledger.migration.subprocess.run", fake_run)
+
+    result = runner.invoke(
+        app,
+        ["--root", str(tmp_path), "convert-sources", "--to", "asciidoc", "--write"],
+    )
+
+    assert result.exit_code == 0
+    migrated_config = config_path.read_text(encoding="utf-8")
+    assert "config_version = 5" in migrated_config
+    assert 'format = "asciidoc"' in migrated_config
+    assert 'section_extension = ".adoc"' in migrated_config
+    assert 'record_extension = ".adoc"' in migrated_config
+    assert "schema_version = 2" in migrated_config
+    assert 'default_output = "architecture.adoc"' in migrated_config
+    assert 'default_format = "asciidoc"' in migrated_config
+    assert 'default_output_dir = "site-build"' in migrated_config
+    assert "keep_intermediate = true" in migrated_config
+    assert 'converter = "pandoc"' in migrated_config
+    assert 'pdf_engine = "tectonic"' in migrated_config
+    assert 'reference_docx = "docs/reference.docx"' in migrated_config
+    assert "[tracking]" in migrated_config
+    assert "[build.outputs.html]" in migrated_config
+    assert 'tool = "pandoc"' in migrated_config
+    assert "[build.outputs.docx]" in migrated_config
+    assert 'reference_docx = "docs/override.docx"' in migrated_config
+
+
+def test_convert_sources_replace_removes_markdown_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     init_legacy_project(tmp_path)
     runner.invoke(
         app,
@@ -133,6 +273,23 @@ def test_convert_sources_replace_removes_markdown_files(tmp_path: Path) -> None:
             "Render output",
         ],
     )
+    monkeypatch.setattr(
+        "archledger.migration.shutil.which",
+        lambda name: "/usr/bin/pandoc",
+    )
+
+    def fake_run(
+        command: list[str],
+        *,
+        input: str,
+        check: bool,
+        capture_output: bool,
+        text: bool,
+    ) -> subprocess.CompletedProcess[str]:
+        del input, check, capture_output, text
+        return subprocess.CompletedProcess(command, 0, "Converted body\n", "")
+
+    monkeypatch.setattr("archledger.migration.subprocess.run", fake_run)
 
     result = runner.invoke(
         app,

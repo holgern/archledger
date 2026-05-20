@@ -49,6 +49,26 @@ def test_snapshot_writes_source_state_json(tmp_path: Path) -> None:
     assert "src/module.py" in state.files
 
 
+def test_snapshot_respects_tracking_disabled(tmp_path: Path) -> None:
+    init_project(tmp_path)
+    config_path = tmp_path / "archledger.toml"
+    config_path.write_text(
+        config_path.read_text(encoding="utf-8").replace(
+            "[tracking]\nenabled = true",
+            "[tracking]\nenabled = false",
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(app, ["--root", str(tmp_path), "--json", "snapshot"])
+
+    assert result.exit_code == 1
+    payload = json.loads(result.stdout)
+    assert payload["ok"] is False
+    assert "tracking is disabled" in payload["error"]["message"].lower()
+    assert not (tmp_path / ".archledger" / "source-state.json").exists()
+
+
 def test_changed_json_is_stable_without_baseline(tmp_path: Path) -> None:
     init_project(tmp_path)
     (tmp_path / "src").mkdir()
@@ -61,6 +81,25 @@ def test_changed_json_is_stable_without_baseline(tmp_path: Path) -> None:
     assert payload["result"]["schema"] == "archledger.changed.v1"
     assert payload["result"]["baseline"]["exists"] is False
     assert "src/module.py" in payload["result"]["changes"]["unbaselined_files"]
+
+
+def test_changed_respects_tracking_disabled(tmp_path: Path) -> None:
+    init_project(tmp_path)
+    config_path = tmp_path / "archledger.toml"
+    config_path.write_text(
+        config_path.read_text(encoding="utf-8").replace(
+            "[tracking]\nenabled = true",
+            "[tracking]\nenabled = false",
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(app, ["--root", str(tmp_path), "--json", "changed"])
+
+    assert result.exit_code == 1
+    payload = json.loads(result.stdout)
+    assert payload["ok"] is False
+    assert "tracking is disabled" in payload["error"]["message"].lower()
 
 
 def test_changed_json_reports_modified_file_and_impacted_record(tmp_path: Path) -> None:
@@ -605,6 +644,37 @@ def test_check_warns_for_invalid_source_ref_path_traversal(tmp_path: Path) -> No
     assert (
         "Record white_box_0001 source_refs entry 1 path must not contain '..':"
         " ../secret.py" in messages
+    )
+
+
+def test_check_warns_for_missing_directory_source_ref(tmp_path: Path) -> None:
+    init_project(tmp_path)
+    runner.invoke(
+        app,
+        ["--root", str(tmp_path), "new", "white-box", "--title", "Tracking layer"],
+    )
+    record_path = (
+        tmp_path / ".archledger" / "records" / "building_blocks" / "white_box_0001.adoc"
+    )
+    record_path.write_text(
+        record_path.read_text(encoding="utf-8").replace(
+            "\n---\n\n",
+            "\nsource_refs:\n  - missing_dir/\n---\n\n",
+            1,
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(app, ["--root", str(tmp_path), "--json", "check"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    messages = [
+        item["message"]
+        for item in payload["result"]["warnings"] + payload["result"]["errors"]
+    ]
+    assert any(
+        "directory does not exist: missing_dir/" in message for message in messages
     )
 
 

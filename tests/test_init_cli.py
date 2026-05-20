@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 from typer.testing import CliRunner
 
 from archledger.cli import app
+from archledger.repository import ArchitectureRepository
+from archledger.storage.meta import read_storage_meta, write_storage_meta
+from archledger.storage.paths import resolve_project_paths
 from archledger.storage.project_config import normalize_project_name
 
 runner = CliRunner()
@@ -198,4 +202,28 @@ def test_invalid_source_format_is_rejected(tmp_path: Path) -> None:
     )
 
     assert result.exit_code == 1
-    assert "source_format must be one of" in result.stderr
+    assert "source_format must be one of" in result.output
+
+
+def test_repo_init_does_not_rewrite_existing_storage_meta_without_overwrite(
+    tmp_path: Path,
+) -> None:
+    init_result = runner.invoke(app, ["--root", str(tmp_path), "init"])
+    assert init_result.exit_code == 0
+
+    storage_meta_path = tmp_path / ".archledger" / "storage.yaml"
+    write_storage_meta(
+        storage_meta_path,
+        replace(
+            read_storage_meta(storage_meta_path),
+            created_at="1999-12-31T23:59:59Z",
+        ),
+    )
+
+    paths, config, _ = resolve_project_paths(tmp_path)
+    repo = ArchitectureRepository(paths, config)
+
+    result = repo.init(overwrite=False)
+
+    assert storage_meta_path not in result.created_paths
+    assert read_storage_meta(storage_meta_path).created_at == "1999-12-31T23:59:59Z"

@@ -237,3 +237,78 @@ def test_tracking_state_file_must_stay_inside_archledger_dir(tmp_path: Path) -> 
     with pytest.raises(ConfigError) as excinfo:
         resolve_project_paths(workspace_root)
     assert str(excinfo.value) == "tracking.state_file must stay inside archledger_dir."
+
+
+def test_build_outputs_rejects_unknown_output_format(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "workspace-invalid-output-format"
+    workspace_root.mkdir()
+    (workspace_root / "archledger.toml").write_text(
+        "\n".join(
+            [
+                "config_version = 5",
+                'archledger_dir = ".archledger"',
+                'project_uuid = "12345678-1234-1234-1234-123456789abc"',
+                'project_name = "demo"',
+                "",
+                "[source]",
+                'format = "markdown"',
+                "",
+                "[build.outputs.epub]",
+                'tool = "pandoc"',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError) as excinfo:
+        resolve_project_paths(workspace_root)
+    assert str(excinfo.value) == "build.outputs.epub is not a supported output format."
+
+
+@pytest.mark.parametrize(
+    ("config_lines", "message"),
+    [
+        (
+            ['tool = "wrong"'],
+            "build.outputs.html.tool must be one of: asciidoctor, auto, pandoc.",
+        ),
+        (
+            ['unknown = "value"'],
+            "Unknown keys in build.outputs.html: unknown",
+        ),
+        (
+            ["pdf_engine = 123"],
+            "build.outputs.html.pdf_engine must be a string.",
+        ),
+    ],
+)
+def test_build_outputs_validate_per_output_settings(
+    tmp_path: Path,
+    config_lines: list[str],
+    message: str,
+) -> None:
+    workspace_root = tmp_path / "workspace-invalid-output-settings"
+    workspace_root.mkdir()
+    (workspace_root / "archledger.toml").write_text(
+        "\n".join(
+            [
+                "config_version = 5",
+                'archledger_dir = ".archledger"',
+                'project_uuid = "12345678-1234-1234-1234-123456789abc"',
+                'project_name = "demo"',
+                "",
+                "[source]",
+                'format = "asciidoc"',
+                "",
+                "[build.outputs.html]",
+                *config_lines,
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError) as excinfo:
+        resolve_project_paths(workspace_root)
+    assert str(excinfo.value) == message

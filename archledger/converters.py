@@ -306,8 +306,9 @@ def _pandoc_command(
     pdf_engine = _pdf_engine(config, requested_format)
     if requested_format is OutputFormat.PDF and pdf_engine:
         command.extend(["--pdf-engine", pdf_engine])
-    if requested_format is OutputFormat.DOCX and config.build_reference_docx.strip():
-        command.extend(["--reference-doc", config.build_reference_docx.strip()])
+    reference_docx = _reference_docx(config, requested_format)
+    if requested_format is OutputFormat.DOCX and reference_docx:
+        command.extend(["--reference-doc", reference_docx])
     command.append(str(input_path))
     return command
 
@@ -318,6 +319,14 @@ def _pdf_engine(config: ProjectConfig, requested_format: OutputFormat) -> str:
     if isinstance(configured, str) and configured.strip():
         return configured.strip()
     return config.build_pdf_engine
+
+
+def _reference_docx(config: ProjectConfig, requested_format: OutputFormat) -> str:
+    output_config = config.build_outputs.get(requested_format.value, {})
+    configured = output_config.get("reference_docx")
+    if isinstance(configured, str) and configured.strip():
+        return configured.strip()
+    return config.build_reference_docx.strip()
 
 
 def _install_hint(
