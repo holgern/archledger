@@ -25,6 +25,30 @@ These export paths are supported when the external tools are installed and the
 corresponding integration checks pass. Native Markdown and AsciiDoc assembly
 remain the lowest-friction path because they do not depend on external converters.
 
+Mermaid diagrams
+----------------
+
+Diagram records can embed Mermaid blocks in Markdown or AsciiDoc source.
+Native builds keep these blocks as pass-through text.
+
+Optional materialization for converter-backed outputs can be enabled with:
+
+.. code-block:: toml
+
+   [diagrams]
+   enabled = true
+   renderer = "mermaid-cli"
+   output_dir = "diagrams"
+   image_format = "svg"
+   kroki_url = ""
+
+Notes:
+
+- ``renderer = "pass-through"`` keeps diagram blocks unchanged.
+- ``renderer = "mermaid-cli"`` requires ``mmdc`` on ``PATH``.
+- ``renderer = "asciidoctor-diagram"`` is intended for direct Asciidoctor flows.
+- ``renderer = "kroki"`` requires an explicit ``kroki_url``.
+
 Source migration
 ----------------
 

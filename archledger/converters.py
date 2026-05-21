@@ -8,11 +8,11 @@ from pathlib import Path
 from archledger.assembly import AssemblyResult
 from archledger.conversion_plan import (
     ConversionPlan,
-    docbook_output_path,
     install_hint,
     plan_conversion,
     require_tool,
 )
+from archledger.diagrams import materialize_diagrams_for_conversion
 from archledger.errors import RenderError
 from archledger.formats import OutputFormat, resolve_output_path
 from archledger.storage.common import write_text
@@ -46,7 +46,7 @@ def convert_assembled_document(
         raise RenderError("Use --output only when building a single format.")
 
     outputs: list[ConversionResult] = []
-    docbook_path: Path | None = None
+    cleanup_paths: list[Path] = []
     try:
         for requested_format in requested_formats:
             output_path = resolve_output_path(
@@ -66,13 +66,28 @@ def convert_assembled_document(
             if plan.native_copy:
                 outputs.append(_build_native_output(assembly, plan))
                 continue
+            conversion_input = assembly.output_path
+            materialized = materialize_diagrams_for_conversion(
+                config,
+                build_dir=build_dir,
+                assembly=assembly,
+                requested_format=requested_format,
+                tool_resolver=shutil.which,
+            )
+            if materialized is not None:
+                conversion_input = materialized.input_path
+                cleanup_paths.extend(materialized.cleanup_paths)
             command = list(plan.command or [])
             if plan.requires_docbook:
-                if docbook_path is None:
-                    docbook_path = _build_docbook_intermediate(
-                        assembly, requested_format
-                    )
+                docbook_path = _build_docbook_intermediate(
+                    assembly,
+                    requested_format,
+                    input_path=conversion_input,
+                )
                 command[-1] = str(docbook_path)
+                cleanup_paths.append(docbook_path)
+            else:
+                command[-1] = str(conversion_input)
             _run_command(command, requested_format)
             outputs.append(
                 ConversionResult(
@@ -82,8 +97,9 @@ def convert_assembled_document(
                 )
             )
     finally:
-        if docbook_path is not None and not config.build_keep_intermediate:
-            docbook_path.unlink(missing_ok=True)
+        if not config.build_keep_intermediate:
+            for path in cleanup_paths:
+                path.unlink(missing_ok=True)
     return BuildResult(assembled_path=assembly.output_path, outputs=tuple(outputs))
 
 
@@ -103,6 +119,8 @@ def _build_native_output(
 def _build_docbook_intermediate(
     assembly: AssemblyResult,
     requested_format: OutputFormat,
+    *,
+    input_path: Path,
 ) -> Path:
     executable = require_tool(
         "asciidoctor",
@@ -110,7 +128,7 @@ def _build_docbook_intermediate(
         install_hint(assembly.source_format, requested_format, docbook=True),
         tool_resolver=shutil.which,
     )
-    output_path = docbook_output_path(assembly)
+    output_path = input_path.with_suffix(".docbook.xml")
     command = [
         executable,
         "-a",
@@ -119,7 +137,7 @@ def _build_docbook_intermediate(
         "docbook5",
         "-o",
         str(output_path),
-        str(assembly.output_path),
+        str(input_path),
     ]
     _run_command(command, requested_format)
     return output_path

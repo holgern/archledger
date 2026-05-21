@@ -36,6 +36,7 @@ Create records:
 
    archledger new requirement "Render architecture document" --status proposed
    archledger new adr "Treat source fragments as canonical" --status proposed
+   archledger new diagram "Runtime login flow" --section runtime_view --status proposed
 
 Build output:
 

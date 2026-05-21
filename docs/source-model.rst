@@ -9,6 +9,10 @@ The source of truth is the fragment tree under ``archledger_dir``:
 - ``sections/`` for the major arc42 chapter skeleton
 - ``records/`` for individual architecture facts
 
+Records include structural, behavioral, and decision artifacts plus first-class
+``diagram`` records. Mermaid stays embedded in Markdown/AsciiDoc record bodies;
+it is not a standalone ``source.format``.
+
 Fragments contain YAML front matter and a body in the configured dialect.
 
 Traceability

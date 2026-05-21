@@ -37,6 +37,7 @@ _ALLOWED_TOP_LEVEL_KEYS = {
     "arc42",
     "skill",
     "tracking",
+    "diagrams",
 }
 _ALLOWED_BUILD_KEYS = {
     "default_output",
@@ -50,6 +51,7 @@ _ALLOWED_BUILD_KEYS = {
     "pdf_engine",
     "reference_docx",
     "outputs",
+    "diagrams",
 }
 _ALLOWED_BUILD_OUTPUT_KEYS = {"enabled", "pdf_engine", "reference_docx", "tool"}
 _ALLOWED_ARC42_KEYS = {"template_version", "language", "title", "include_help"}
@@ -70,9 +72,22 @@ _ALLOWED_SOURCE_KEYS = {
     "record_extension",
     "schema_version",
 }
+_ALLOWED_DIAGRAM_KEYS = {
+    "enabled",
+    "renderer",
+    "default_type",
+    "output_dir",
+    "image_format",
+    "kroki_url",
+}
 _ALLOWED_BUILD_CONVERTERS = frozenset({"auto", "pandoc", "asciidoctor"})
 _ALLOWED_TRACKING_SCANNERS = frozenset({"auto", "git", "filesystem"})
 _ALLOWED_TRACKING_HASH_ALGORITHMS = frozenset({"sha256"})
+_ALLOWED_DIAGRAM_RENDERERS = frozenset(
+    {"pass-through", "mermaid-cli", "asciidoctor-diagram", "kroki"}
+)
+_ALLOWED_DIAGRAM_TYPES = frozenset({"mermaid"})
+_ALLOWED_DIAGRAM_IMAGE_FORMATS = frozenset({"svg", "png"})
 
 
 def load_project_config(path: Path) -> ProjectConfig:
@@ -118,6 +133,12 @@ def load_project_config(path: Path) -> ProjectConfig:
         raw_data.get("tracking"),
         _ALLOWED_TRACKING_KEYS,
         "tracking",
+    )
+    diagrams_data = _validate_subtable(
+        path,
+        raw_data.get("diagrams"),
+        _ALLOWED_DIAGRAM_KEYS,
+        "diagrams",
     )
 
     config_version = raw_data.get("config_version")
@@ -167,6 +188,14 @@ def load_project_config(path: Path) -> ProjectConfig:
         tracking_max_file_bytes,
         tracking_hash_algorithm,
     ) = _parse_tracking_config(tracking_data)
+    (
+        diagram_enabled,
+        diagram_renderer,
+        diagram_default_type,
+        diagram_output_dir,
+        diagram_image_format,
+        diagram_kroki_url,
+    ) = _parse_diagram_config(diagrams_data, build_data)
 
     return ProjectConfig(
         config_version=cast(int, config_version),
@@ -202,6 +231,12 @@ def load_project_config(path: Path) -> ProjectConfig:
         tracking_exclude=tracking_exclude,
         tracking_max_file_bytes=tracking_max_file_bytes,
         tracking_hash_algorithm=tracking_hash_algorithm,
+        diagram_enabled=diagram_enabled,
+        diagram_renderer=diagram_renderer,
+        diagram_default_type=diagram_default_type,
+        diagram_output_dir=diagram_output_dir,
+        diagram_image_format=diagram_image_format,
+        diagram_kroki_url=diagram_kroki_url,
     )
 
 
@@ -457,6 +492,54 @@ def _parse_tracking_config(
         tracking_max_file_bytes,
         tracking_hash_algorithm,
     )
+
+
+def _parse_diagram_config(
+    diagrams_data: dict[str, object],
+    build_data: dict[str, object],
+) -> tuple[bool, str, str, str, str, str]:
+    build_diagrams_raw = build_data.get("diagrams")
+    if build_diagrams_raw is None:
+        build_diagrams_data: dict[str, object] = {}
+    elif isinstance(build_diagrams_raw, dict):
+        unknown_keys = sorted(set(build_diagrams_raw) - _ALLOWED_DIAGRAM_KEYS)
+        if unknown_keys:
+            joined = ", ".join(unknown_keys)
+            raise ConfigError(f"Unknown keys in build.diagrams: {joined}")
+        build_diagrams_data = dict(build_diagrams_raw)
+    else:
+        raise ConfigError("build.diagrams must be a TOML table.")
+
+    effective_data = diagrams_data if diagrams_data else build_diagrams_data
+    enabled = _require_bool(effective_data.get("enabled", False), "diagrams.enabled")
+    renderer = _require_choice(
+        effective_data.get("renderer", "pass-through"),
+        "diagrams.renderer",
+        _ALLOWED_DIAGRAM_RENDERERS,
+    )
+    default_type = _require_choice(
+        effective_data.get("default_type", "mermaid"),
+        "diagrams.default_type",
+        _ALLOWED_DIAGRAM_TYPES,
+    )
+    output_dir = _require_non_empty_string(
+        effective_data.get("output_dir", "diagrams"),
+        "diagrams.output_dir",
+    )
+    image_format = _require_choice(
+        effective_data.get("image_format", "svg"),
+        "diagrams.image_format",
+        _ALLOWED_DIAGRAM_IMAGE_FORMATS,
+    )
+    kroki_url = _require_optional_string(
+        effective_data.get("kroki_url", ""),
+        "diagrams.kroki_url",
+    )
+    if renderer == "kroki" and not kroki_url:
+        raise ConfigError(
+            "diagrams.kroki_url must be set when diagrams.renderer is \"kroki\"."
+        )
+    return enabled, renderer, default_type, output_dir, image_format, kroki_url
 
 
 def _normalize_extension(value: object, field_name: str) -> str:

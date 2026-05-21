@@ -74,6 +74,12 @@ def resolve_project_paths(start: Path) -> tuple[ProjectPaths, ProjectConfig, lis
         "build.default_output",
         parent_label="build.default_output_dir",
     )
+    _resolve_relative_child(
+        build_dir,
+        config.diagram_output_dir,
+        "diagrams.output_dir",
+        parent_label="build.default_output_dir",
+    )
     return (
         ProjectPaths(
             workspace_root=workspace_root,

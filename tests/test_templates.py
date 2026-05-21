@@ -164,6 +164,7 @@ def test_new_succeeds_for_every_record_type(tmp_path: Path) -> None:
         "quality-requirement",
         "quality-scenario",
         "risk",
+        "diagram",
         "glossary-term",
     ]:
         result = runner.invoke(

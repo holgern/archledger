@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 
 from archledger.model import PLACEHOLDER_SNIPPETS, ArchitectureRecord
@@ -199,6 +200,70 @@ def _glossary_term_warnings(record: ArchitectureRecord) -> list[str]:
     return [f"Glossary term {record.id} has no definition."]
 
 
+def _diagram_warnings(record: ArchitectureRecord) -> list[str]:
+    warnings: list[str] = []
+    diagram_type = record.metadata.get("diagram_type")
+    if not isinstance(diagram_type, str) or diagram_type.strip().lower() != "mermaid":
+        warnings.append(f"Diagram {record.id} has unsupported diagram_type: {diagram_type}")
+    caption = record.metadata.get("caption")
+    if not isinstance(caption, str) or not caption.strip():
+        warnings.append(f"Diagram {record.id} has no caption.")
+
+    body_format_value = record.metadata.get("body_format")
+    body_format = body_format_value.strip().lower() if isinstance(body_format_value, str) else ""
+    if body_format == "markdown":
+        if not _has_markdown_mermaid_block(record.body):
+            warnings.append(
+                f"Diagram {record.id} markdown body is missing a fenced mermaid block."
+            )
+        elif _markdown_mermaid_block_is_empty(record.body):
+            warnings.append(f"Diagram {record.id} markdown mermaid block is empty.")
+    elif body_format == "asciidoc":
+        if not _has_asciidoc_mermaid_block(record.body):
+            warnings.append(
+                f"Diagram {record.id} asciidoc body is missing a [mermaid] block."
+            )
+        elif _asciidoc_mermaid_block_is_empty(record.body):
+            warnings.append(f"Diagram {record.id} asciidoc mermaid block is empty.")
+    return warnings
+
+
+def _has_markdown_mermaid_block(body: str) -> bool:
+    return bool(re.search(r"```mermaid\s*\n.*?\n```", body, flags=re.IGNORECASE | re.DOTALL))
+
+
+def _markdown_mermaid_block_is_empty(body: str) -> bool:
+    match = re.search(
+        r"```mermaid\s*\n(.*?)\n```",
+        body,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if match is None:
+        return False
+    return not match.group(1).strip()
+
+
+def _has_asciidoc_mermaid_block(body: str) -> bool:
+    return bool(
+        re.search(
+            r"\[mermaid\]\s*\n\.\.\.\.\s*\n.*?\n\.\.\.\.",
+            body,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+    )
+
+
+def _asciidoc_mermaid_block_is_empty(body: str) -> bool:
+    match = re.search(
+        r"\[mermaid\]\s*\n\.\.\.\.\s*\n(.*?)\n\.\.\.\.",
+        body,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if match is None:
+        return False
+    return not match.group(1).strip()
+
+
 def _body_syntax_warnings(record: ArchitectureRecord) -> list[str]:
     body_format_value = record.metadata.get("body_format")
     if not isinstance(body_format_value, str):
@@ -233,5 +298,6 @@ _CONTENT_WARNING_CHECKERS: dict[str, Callable[[ArchitectureRecord], list[str]]] 
     "adr": _adr_warnings,
     "quality_scenario": _quality_scenario_warnings,
     "risk": _risk_warnings,
+    "diagram": _diagram_warnings,
     "glossary_term": _glossary_term_warnings,
 }

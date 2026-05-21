@@ -259,8 +259,117 @@ def test_project_config_fields_are_accounted_for() -> None:
         "tracking_exclude",
         "tracking_max_file_bytes",
         "tracking_hash_algorithm",
+        "diagram_enabled",
+        "diagram_renderer",
+        "diagram_default_type",
+        "diagram_output_dir",
+        "diagram_image_format",
+        "diagram_kroki_url",
     }
     assert {item.name for item in fields(ProjectConfig)} == behavior_or_metadata_fields
+
+
+def test_v5_config_supports_top_level_diagrams_table(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "workspace-v5-diagrams"
+    workspace_root.mkdir()
+    (workspace_root / "archledger.toml").write_text(
+        "\n".join(
+            [
+                "config_version = 5",
+                'archledger_dir = ".archledger"',
+                'project_uuid = "12345678-1234-1234-1234-123456789abc"',
+                'project_name = "demo"',
+                "",
+                "[source]",
+                'format = "markdown"',
+                "",
+                "[diagrams]",
+                "enabled = true",
+                'renderer = "mermaid-cli"',
+                'default_type = "mermaid"',
+                'output_dir = "build-diagrams"',
+                'image_format = "png"',
+                'kroki_url = ""',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    _, config, warnings = resolve_project_paths(workspace_root)
+
+    assert warnings == []
+    assert config.diagram_enabled is True
+    assert config.diagram_renderer == "mermaid-cli"
+    assert config.diagram_default_type == "mermaid"
+    assert config.diagram_output_dir == "build-diagrams"
+    assert config.diagram_image_format == "png"
+    assert config.diagram_kroki_url == ""
+
+
+def test_v5_config_supports_build_diagrams_table(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "workspace-v5-build-diagrams"
+    workspace_root.mkdir()
+    (workspace_root / "archledger.toml").write_text(
+        "\n".join(
+            [
+                "config_version = 5",
+                'archledger_dir = ".archledger"',
+                'project_uuid = "12345678-1234-1234-1234-123456789abc"',
+                'project_name = "demo"',
+                "",
+                "[source]",
+                'format = "markdown"',
+                "",
+                "[build.diagrams]",
+                "enabled = true",
+                'renderer = "pass-through"',
+                'default_type = "mermaid"',
+                'output_dir = "diagrams"',
+                'image_format = "svg"',
+                'kroki_url = ""',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    _, config, warnings = resolve_project_paths(workspace_root)
+
+    assert warnings == []
+    assert config.diagram_enabled is True
+    assert config.diagram_renderer == "pass-through"
+    assert config.diagram_default_type == "mermaid"
+
+
+def test_kroki_renderer_requires_explicit_kroki_url(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "workspace-v5-kroki"
+    workspace_root.mkdir()
+    (workspace_root / "archledger.toml").write_text(
+        "\n".join(
+            [
+                "config_version = 5",
+                'archledger_dir = ".archledger"',
+                'project_uuid = "12345678-1234-1234-1234-123456789abc"',
+                'project_name = "demo"',
+                "",
+                "[source]",
+                'format = "markdown"',
+                "",
+                "[diagrams]",
+                'renderer = "kroki"',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError) as excinfo:
+        resolve_project_paths(workspace_root)
+    assert (
+        str(excinfo.value)
+        == 'diagrams.kroki_url must be set when diagrams.renderer is "kroki".'
+    )
 
 
 def test_tracking_state_file_must_stay_inside_archledger_dir(tmp_path: Path) -> None:

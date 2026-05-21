@@ -344,6 +344,27 @@ def new_record(
             help="Quality attribute for quality-scenario records.",
         ),
     ] = None,
+    diagram_type: Annotated[
+        str | None,
+        typer.Option(
+            "--diagram-type",
+            help="Diagram type for diagram records (default: mermaid).",
+        ),
+    ] = None,
+    caption: Annotated[
+        str | None,
+        typer.Option(
+            "--caption",
+            help="Diagram caption for diagram records.",
+        ),
+    ] = None,
+    related_records: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--related",
+            help="Related record ID for diagram records. Repeatable.",
+        ),
+    ] = None,
 ) -> None:
     state = _state(ctx)
 
@@ -364,6 +385,9 @@ def new_record(
                 partner=partner,
                 environment=environment,
                 quality=quality,
+                diagram_type=diagram_type,
+                caption=caption,
+                related_records=related_records or [],
             )
         )
 

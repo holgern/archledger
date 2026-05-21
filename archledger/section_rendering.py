@@ -130,6 +130,34 @@ def solution_strategy_items(records: list[ArchitectureRecord], dialect: Dialect)
     return "\n".join(lines).rstrip()
 
 
+def section_diagrams(
+    records: list[ArchitectureRecord],
+    section_key: str,
+    dialect: Dialect,
+) -> str:
+    diagrams = [
+        record
+        for record in _records_of_type(records, "diagram")
+        if record.section == section_key
+    ]
+    if not diagrams:
+        return ""
+    lines: list[str] = []
+    for record in diagrams:
+        caption = str(record.metadata.get("caption", record.title)).strip() or record.title
+        lines.extend(
+            [
+                dialect.heading(dialect.record_heading_level, record.title),
+                "",
+                record.body.strip() or dialect.placeholder(),
+                "",
+                f"{dialect.strong('Caption:')} {caption}",
+                "",
+            ]
+        )
+    return "\n".join(lines).rstrip()
+
+
 def building_block_hierarchy(
     records: list[ArchitectureRecord], dialect: Dialect
 ) -> str:

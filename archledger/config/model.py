@@ -91,6 +91,16 @@ class TrackingConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class DiagramConfig:
+    enabled: bool
+    renderer: str
+    default_type: str
+    output_dir: str
+    image_format: str
+    kroki_url: str
+
+
+@dataclass(frozen=True, slots=True)
 class ProjectConfig:
     config_version: int
     archledger_dir: str
@@ -125,6 +135,12 @@ class ProjectConfig:
     tracking_exclude: tuple[str, ...] = DEFAULT_TRACKING_EXCLUDE
     tracking_max_file_bytes: int = 1_000_000
     tracking_hash_algorithm: str = "sha256"
+    diagram_enabled: bool = False
+    diagram_renderer: str = "pass-through"
+    diagram_default_type: str = "mermaid"
+    diagram_output_dir: str = "diagrams"
+    diagram_image_format: str = "svg"
+    diagram_kroki_url: str = ""
 
     @property
     def source(self) -> SourceConfig:
@@ -181,6 +197,17 @@ class ProjectConfig:
             exclude=self.tracking_exclude,
             max_file_bytes=self.tracking_max_file_bytes,
             hash_algorithm=self.tracking_hash_algorithm,
+        )
+
+    @property
+    def diagrams(self) -> DiagramConfig:
+        return DiagramConfig(
+            enabled=self.diagram_enabled,
+            renderer=self.diagram_renderer,
+            default_type=self.diagram_default_type,
+            output_dir=self.diagram_output_dir,
+            image_format=self.diagram_image_format,
+            kroki_url=self.diagram_kroki_url,
         )
 
 

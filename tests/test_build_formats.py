@@ -525,3 +525,68 @@ def test_markdown_source_pdf_uses_pandoc(
     assert result.exit_code == 0
     assert captured[0][0:3] == ["/usr/bin/pandoc", "-f", "gfm"]
     assert str(tmp_path / "build" / "architecture.md") in captured[0]
+
+
+def test_mermaid_cli_invoked_only_when_diagram_rendering_enabled(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    init_project_with_format(tmp_path, "markdown")
+    runner.invoke(
+        app,
+        [
+            "--root",
+            str(tmp_path),
+            "new",
+            "diagram",
+            "Runtime login flow",
+            "--status",
+            "accepted",
+            "--section",
+            "runtime_view",
+        ],
+    )
+    config_path = tmp_path / "archledger.toml"
+    config_text = config_path.read_text(encoding="utf-8")
+    config_text = config_text.replace(
+        '[diagrams]\nenabled = false\nrenderer = "pass-through"\n',
+        '[diagrams]\nenabled = true\nrenderer = "mermaid-cli"\n',
+        1,
+    )
+    config_path.write_text(config_text, encoding="utf-8")
+
+    def fake_which(name: str) -> str | None:
+        if name in {"pandoc", "mmdc"}:
+            return f"/usr/bin/{name}"
+        return None
+
+    monkeypatch.setattr("archledger.converters.shutil.which", fake_which)
+    commands: list[list[str]] = []
+
+    def fake_run(
+        command: list[str],
+        *,
+        check: bool,
+        capture_output: bool,
+        text: bool,
+    ) -> subprocess.CompletedProcess[str]:
+        del check, capture_output, text
+        commands.append(command)
+        if command[0].endswith("mmdc"):
+            output_path = Path(command[command.index("-o") + 1])
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text("<svg/>", encoding="utf-8")
+            return subprocess.CompletedProcess(command, 0, "", "")
+        output_path = Path(command[command.index("-o") + 1])
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text("converted", encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr("archledger.converters.subprocess.run", fake_run)
+    monkeypatch.setattr("archledger.diagrams.subprocess.run", fake_run)
+
+    result = runner.invoke(app, ["--root", str(tmp_path), "build", "--format", "html"])
+
+    assert result.exit_code == 0
+    assert any(cmd[0] == "/usr/bin/mmdc" for cmd in commands)
+    assert any(cmd[0] == "/usr/bin/pandoc" for cmd in commands)

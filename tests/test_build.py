@@ -187,6 +187,35 @@ def test_build_includes_adr_under_architecture_decisions(tmp_path: Path) -> None
     assert "*Deciders:*" in output
 
 
+def test_build_includes_diagram_records_in_runtime_view(tmp_path: Path) -> None:
+    init_project(tmp_path)
+    runner.invoke(
+        app,
+        [
+            "--root",
+            str(tmp_path),
+            "new",
+            "diagram",
+            "Runtime login flow",
+            "--status",
+            "accepted",
+            "--section",
+            "runtime_view",
+            "--caption",
+            "Runtime login flow",
+        ],
+    )
+
+    result = runner.invoke(app, ["--root", str(tmp_path), "build"])
+
+    assert result.exit_code == 0
+    output = (tmp_path / "build" / "architecture.adoc").read_text(encoding="utf-8")
+    assert "== Runtime View" in output
+    assert "=== Runtime login flow" in output
+    assert "[mermaid]" in output
+    assert "*Caption:* Runtime login flow" in output
+
+
 def test_build_renders_structured_risk_overview(tmp_path: Path) -> None:
     init_project(tmp_path)
     runner.invoke(

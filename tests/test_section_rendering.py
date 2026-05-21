@@ -4,7 +4,7 @@ from pathlib import Path
 
 from archledger.dialects import get_dialect
 from archledger.model import ArchitectureRecord
-from archledger.section_rendering import building_block_hierarchy
+from archledger.section_rendering import building_block_hierarchy, section_diagrams
 
 
 def test_building_block_hierarchy_omits_empty_fulfilled_requirements_and_risks() -> None:
@@ -51,3 +51,23 @@ def _black_box_record(
         },
         body="Source tracking details.",
     )
+
+
+def test_section_diagrams_renders_diagram_body_and_caption() -> None:
+    record = ArchitectureRecord(
+        id="diagram_0001",
+        type="diagram",
+        title="Runtime login flow",
+        status="accepted",
+        section="runtime_view",
+        order=10,
+        path=Path(".archledger/records/diagrams/diagram_0001.md"),
+        metadata={"caption": "Runtime login flow"},
+        body="```mermaid\nflowchart LR\n  A --> B\n```",
+    )
+
+    rendered = section_diagrams([record], "runtime_view", get_dialect("markdown"))
+
+    assert "## Runtime login flow" in rendered
+    assert "```mermaid" in rendered
+    assert "**Caption:** Runtime login flow" in rendered

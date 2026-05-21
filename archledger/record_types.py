@@ -37,6 +37,16 @@ def _string_kwarg(
     return value if isinstance(value, str) else default
 
 
+def _string_sequence_kwarg(
+    kwargs: Mapping[str, object],
+    key: str,
+) -> list[str]:
+    value = kwargs.get(key)
+    if not isinstance(value, (list, tuple)):
+        return []
+    return [str(item) for item in value if str(item).strip()]
+
+
 def _requirement_context(_input: RecordContextInput) -> dict[str, object]:
     return {
         "source": "",
@@ -152,6 +162,15 @@ def _risk_context(_input: RecordContextInput) -> dict[str, object]:
 
 def _glossary_term_context(input_data: RecordContextInput) -> dict[str, object]:
     return {"term": input_data.title, "definition": ""}
+
+
+def _diagram_context(input_data: RecordContextInput) -> dict[str, object]:
+    caption = _string_kwarg(input_data.kwargs, "caption", "")
+    return {
+        "diagram_type": _string_kwarg(input_data.kwargs, "diagram_type", "mermaid"),
+        "caption": caption if caption else input_data.title,
+        "related_records": _string_sequence_kwarg(input_data.kwargs, "related_records"),
+    }
 
 
 RECORD_TYPE_SPECS = (
@@ -298,6 +317,15 @@ RECORD_TYPE_SPECS = (
         default_section="risks_and_technical_debt",
         template_basename="risk",
         context_factory=_risk_context,
+    ),
+    RecordTypeSpec(
+        kind="diagram",
+        aliases=("diagram",),
+        directory="diagrams",
+        filename_prefix="diagram",
+        default_section="cross_cutting_concepts",
+        template_basename="diagram",
+        context_factory=_diagram_context,
     ),
     RecordTypeSpec(
         kind="glossary_term",

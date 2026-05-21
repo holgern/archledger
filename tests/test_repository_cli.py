@@ -383,6 +383,42 @@ def test_new_quality_scenario_accepts_quality_and_environment(tmp_path: Path) ->
     assert 'environment: "ci"' in created
 
 
+def test_new_diagram_accepts_diagram_options(tmp_path: Path) -> None:
+    init_project(tmp_path)
+
+    result = runner.invoke(
+        app,
+        [
+            "--root",
+            str(tmp_path),
+            "new",
+            "diagram",
+            "Runtime login flow",
+            "--section",
+            "runtime_view",
+            "--diagram-type",
+            "mermaid",
+            "--caption",
+            "Runtime login flow",
+            "--related",
+            "runtime_0001",
+            "--related",
+            "black_box_0004",
+        ],
+    )
+
+    assert result.exit_code == 0
+    created = (
+        tmp_path / ".archledger" / "records" / "diagrams" / "diagram_0001.adoc"
+    ).read_text(encoding="utf-8")
+    assert 'diagram_type: "mermaid"' in created
+    assert 'caption: "Runtime login flow"' in created
+    assert "related_records:" in created
+    assert '"runtime_0001"' in created
+    assert '"black_box_0004"' in created
+    assert "[mermaid]" in created
+
+
 def test_seed_arc42_minimal_creates_starter_records(tmp_path: Path) -> None:
     init_project(tmp_path)
 
@@ -829,6 +865,28 @@ def test_new_json_output(tmp_path: Path) -> None:
     payload = json.loads(result.stdout)
     assert payload["ok"] is True
     assert payload["result"]["id"] == "black_box_0001"
+
+
+def test_new_diagram_json_output(tmp_path: Path) -> None:
+    init_project(tmp_path)
+
+    result = runner.invoke(
+        app,
+        [
+            "--root",
+            str(tmp_path),
+            "--json",
+            "new",
+            "diagram",
+            "Deployment topology",
+        ],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["ok"] is True
+    assert payload["result"]["id"] == "diagram_0001"
+    assert payload["result"]["path"].endswith("records/diagrams/diagram_0001.adoc")
 
 
 def test_new_legacy_v2_project_keeps_markdown_template(tmp_path: Path) -> None:

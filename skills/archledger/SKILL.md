@@ -118,6 +118,28 @@ Rules:
 - directory refs end with `/`
 - use `changed` output to identify unlinked changed files and add `source_refs` where traceability is useful
 
+### Creating diagrams
+
+Use diagram records for visual architecture views:
+
+```bash
+archledger new diagram "Runtime login flow" --section runtime_view --status proposed
+archledger new diagram "Deployment topology" --section deployment_view --diagram-type mermaid
+```
+
+Diagram syntax by source format:
+
+- Markdown: fenced `````mermaid`` blocks
+- AsciiDoc: ``[mermaid]`` + ``....`` blocks
+
+Prefer sections:
+
+- ``context_and_scope`` for context diagrams
+- ``building_block_view`` for structure/decomposition
+- ``runtime_view`` for flows/sequences
+- ``deployment_view`` for topology
+- ``cross_cutting_concepts`` for shared mechanisms
+
 ## Reading and editing rules
 
 - Prefer `archledger --json source changed` before broad repository reads when the user wants architecture docs refreshed.

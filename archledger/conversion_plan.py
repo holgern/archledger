@@ -89,6 +89,7 @@ def plan_conversion(
                 requested_format=requested_format,
                 output_path=output_path,
                 command=_direct_asciidoctor_command(
+                    config,
                     requested_format,
                     assembly.output_path,
                     output_path,
@@ -171,6 +172,7 @@ def _selected_converter(config: ProjectConfig, requested_format: OutputFormat) -
 
 
 def _direct_asciidoctor_command(
+    config: ProjectConfig,
     requested_format: OutputFormat,
     assembly_path: Path,
     output_path: Path,
@@ -184,7 +186,7 @@ def _direct_asciidoctor_command(
             "Install the Ruby gem `asciidoctor` or disable [build.outputs.html].",
             tool_resolver=tool_resolver,
         )
-        return [
+        command = [
             executable,
             "-a",
             "skip-front-matter",
@@ -194,6 +196,9 @@ def _direct_asciidoctor_command(
             str(output_path),
             str(assembly_path),
         ]
+        if config.diagram_enabled and config.diagram_renderer == "asciidoctor-diagram":
+            command[1:1] = ["-r", "asciidoctor-diagram"]
+        return command
     if requested_format is OutputFormat.PDF:
         executable = require_tool(
             "asciidoctor-pdf",
@@ -201,7 +206,7 @@ def _direct_asciidoctor_command(
             "Install the Ruby gem `asciidoctor-pdf` or disable [build.outputs.pdf].",
             tool_resolver=tool_resolver,
         )
-        return [
+        command = [
             executable,
             "-a",
             "skip-front-matter",
@@ -209,6 +214,9 @@ def _direct_asciidoctor_command(
             str(output_path),
             str(assembly_path),
         ]
+        if config.diagram_enabled and config.diagram_renderer == "asciidoctor-diagram":
+            command[1:1] = ["-r", "asciidoctor-diagram"]
+        return command
     raise AssertionError(
         f"Unsupported direct AsciiDoc conversion format: {requested_format.value}"
     )

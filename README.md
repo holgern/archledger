@@ -136,6 +136,7 @@ Do **not** treat generated build output as canonical source. The default locatio
 | `interface`           | `interface`           | `building_block_view`      |
 | `runtime_scenario`    | `runtime`             | `runtime_view`             |
 | `infrastructure`      | `infrastructure`      | `deployment_view`          |
+| `diagram`             | `diagram`             | `cross_cutting_concepts`   |
 | `concept`             | `concept`             | `cross_cutting_concepts`   |
 | `adr`                 | `adr`                 | `architecture_decisions`   |
 | `quality_requirement` | `quality-requirement` | `quality_requirements`     |
@@ -243,6 +244,31 @@ archledger --json build --format html --format markdown
 | AsciiDoc      | DOCX, Markdown, RST, Textile            | `asciidoctor` + `pandoc`      |
 
 Per-output overrides live under `[build.outputs.<format>]`. Supported keys are `tool`, `pdf_engine`, `reference_docx`, and `enabled`. Supported tool values are `auto`, `pandoc`, and `asciidoctor`.
+
+## Mermaid diagrams
+
+Create first-class diagram records directly:
+
+```bash
+archledger new diagram "Runtime login flow" --section runtime_view --status proposed
+archledger new diagram "Deployment topology" --section deployment_view --caption "Target deployment"
+```
+
+Native markdown/asciidoc builds keep Mermaid source blocks as pass-through text.
+Rendered image materialization for converter-backed formats is optional and disabled
+by default:
+
+```toml
+[diagrams]
+enabled = true
+renderer = "mermaid-cli" # pass-through | mermaid-cli | asciidoctor-diagram | kroki
+output_dir = "diagrams"
+image_format = "svg"
+kroki_url = ""
+```
+
+`renderer = "kroki"` requires an explicit `kroki_url`. No public Kroki URL is used
+implicitly.
 
 ## Migrating source dialects
 
