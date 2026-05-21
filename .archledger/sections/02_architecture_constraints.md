@@ -3,6 +3,9 @@ id: section_architecture_constraints
 type: section
 section: architecture_constraints
 title: Architecture Constraints
+schema_version: 2
+date: "2026-05-21"
+body_format: markdown
 order: 20
 status: accepted
 ---

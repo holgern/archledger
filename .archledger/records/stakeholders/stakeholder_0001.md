@@ -2,6 +2,9 @@
 id: stakeholder_0001
 type: stakeholder
 title: "Coding Agent"
+schema_version: 2
+date: "2026-05-21"
+body_format: markdown
 status: accepted
 section: introduction_and_goals
 order: 10
@@ -11,6 +14,9 @@ expectations:
   - Deterministic builds for CI pipelines
   - Seed preset for quick bootstrap
   - Skill file (SKILL.md) for agent protocol
+source_refs:
+- README.md
+- docs/index.rst
 ---
 
 Automated coding agents that create, validate, and render architecture documentation as part of development workflows. They interact with archledger exclusively through the CLI, preferring `--json` output for structured parsing.

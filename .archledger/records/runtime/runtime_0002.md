@@ -2,6 +2,9 @@
 id: runtime_0002
 type: runtime_scenario
 title: "Validate records with check"
+schema_version: 2
+date: "2026-05-21"
+body_format: markdown
 status: accepted
 section: runtime_view
 order: 20
@@ -11,6 +14,9 @@ participants:
   - Storage Layer
 trigger: "User invokes archledger check or archledger check --strict"
 result: "A list of errors and warnings is reported. Exit code 0 if clean, 1 if errors."
+source_refs:
+- archledger/cli.py
+- tests/test_repository_cli.py
 ---
 
 1. CLI resolves the project config.

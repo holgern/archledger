@@ -2,6 +2,9 @@
 id: white_box_0001
 type: white_box
 title: Overall System
+schema_version: 2
+date: "2026-05-21"
+body_format: markdown
 status: accepted
 section: building_block_view
 level: 1

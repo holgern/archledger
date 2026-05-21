@@ -3,6 +3,9 @@ id: section_runtime_view
 type: section
 section: runtime_view
 title: Runtime View
+schema_version: 2
+date: "2026-05-21"
+body_format: markdown
 order: 60
 status: accepted
 ---

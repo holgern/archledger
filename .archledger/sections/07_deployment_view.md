@@ -3,6 +3,9 @@ id: section_deployment_view
 type: section
 section: deployment_view
 title: Deployment View
+schema_version: 2
+date: "2026-05-21"
+body_format: markdown
 order: 70
 status: accepted
 ---

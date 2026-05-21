@@ -2,6 +2,9 @@
 id: runtime_0003
 type: runtime_scenario
 title: "Initialize a new project"
+schema_version: 2
+date: "2026-05-21"
+body_format: markdown
 status: accepted
 section: runtime_view
 order: 30
@@ -11,6 +14,9 @@ participants:
   - Storage Layer
 trigger: "User invokes `archledger init` in a project directory"
 result: "Config file created, directory scaffold initialized with 12 section files and 15 record subdirectories."
+source_refs:
+- archledger/cli.py
+- tests/test_repository_cli.py
 ---
 
 1. CLI checks that `archledger.toml` does not already exist.

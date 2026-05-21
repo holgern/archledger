@@ -1,6 +1,6 @@
 # Project-local archledger configuration.
 # This file lives in the source project root.
-config_version = 3
+config_version = 5
 archledger_dir = ".archledger"
 
 # Stable project identity. Commit this with your source tree.
@@ -12,6 +12,7 @@ format = "markdown"
 front_matter = "yaml"
 section_extension = ".md"
 record_extension = ".md"
+schema_version = 2
 
 [build]
 default_output = "ARCHITECTURE.md"
@@ -20,11 +21,22 @@ default_output_dir = "."
 include_draft = false
 include_superseded = false
 strict = false
+keep_intermediate = false
+converter = "auto"
+
+[tracking]
+enabled = true
+state_file = "source-state.json"
+scanner = "auto"
+include = ["**/*.py", "**/*.toml", "**/*.md", "**/*.rst", "**/*.j2", "**/*.yaml", "**/*.yml", "**/*.json"]
+exclude = [".git/**", ".venv/**", "**/__pycache__/**", ".mypy_cache/**", ".pytest_cache/**", ".ruff_cache/**", "dist/**", "build/**"]
+max_file_bytes = 1000000
+hash_algorithm = "sha256"
 
 [arc42]
 template_version = "9.0-EN"
 language = "en"
-title = "Architecture Documentation"
+title = "archledger Architecture Documentation"
 include_help = false
 
 [skill]

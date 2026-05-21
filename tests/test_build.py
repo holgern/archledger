@@ -239,6 +239,58 @@ def test_build_is_deterministic(tmp_path: Path) -> None:
     assert first_output == second_output
 
 
+def test_build_uses_source_date_epoch_for_document_date(tmp_path: Path) -> None:
+    init_project(tmp_path)
+
+    result = runner.invoke(
+        app,
+        ["--root", str(tmp_path), "build"],
+        env={"SOURCE_DATE_EPOCH": "946684800"},
+    )
+
+    assert result.exit_code == 0
+    output = (tmp_path / "build" / "architecture.adoc").read_text(encoding="utf-8")
+    assert ":revdate: 2000-01-01" in output
+
+
+def test_build_uses_latest_record_metadata_date_when_epoch_not_set(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    init_project(tmp_path)
+    monkeypatch.delenv("SOURCE_DATE_EPOCH", raising=False)
+    runner.invoke(
+        app,
+        [
+            "--root",
+            str(tmp_path),
+            "new",
+            "requirement",
+            "Date anchor requirement",
+            "--status",
+            "accepted",
+        ],
+    )
+    record_path = next(tmp_path.rglob("requirement_*.adoc"))
+    lines = record_path.read_text(encoding="utf-8").splitlines()
+    updated_lines: list[str] = []
+    for line in lines:
+        if line.startswith("date: "):
+            updated_lines.append('date: "2042-12-31"')
+            continue
+        if line.startswith("updated_at: "):
+            updated_lines.append('updated_at: "2042-12-31T23:59:59Z"')
+            continue
+        updated_lines.append(line)
+    record_path.write_text("\n".join(updated_lines) + "\n", encoding="utf-8")
+
+    result = runner.invoke(app, ["--root", str(tmp_path), "build"])
+
+    assert result.exit_code == 0
+    output = (tmp_path / "build" / "architecture.adoc").read_text(encoding="utf-8")
+    assert ":revdate: 2042-12-31" in output
+
+
 def test_build_output_path_can_be_overridden(tmp_path: Path) -> None:
     init_project(tmp_path)
 

@@ -2,6 +2,9 @@
 id: runtime_0004
 type: runtime_scenario
 title: "Build multi-format output"
+schema_version: 2
+date: "2026-05-21"
+body_format: markdown
 status: accepted
 section: runtime_view
 order: 40
@@ -12,6 +15,9 @@ participants:
   - Converter Layer
 trigger: "User invokes archledger build with optional --format, --formats, --all, or --output"
 result: "Assembled architecture document in the requested format(s) written to the build directory."
+source_refs:
+- archledger/cli.py
+- tests/test_repository_cli.py
 ---
 
 1. CLI resolves the project config and constructs a Repository.

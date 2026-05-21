@@ -174,16 +174,23 @@ def building_block_hierarchy(
                 _string_list(record.metadata.get("fulfilled_requirements"))
             )
             risks = ", ".join(_string_list(record.metadata.get("risks")))
+            metadata_lines = [
+                f"{dialect.strong('Parent:')} {record.metadata.get('parent', '')}",
+                f"{dialect.strong('Interfaces:')} {interfaces_value}",
+                f"{dialect.strong('Location:')} {locations}",
+            ]
+            if fulfilled_requirements:
+                metadata_lines.append(
+                    f"{dialect.strong('Fulfilled requirements:')} "
+                    f"{fulfilled_requirements}"
+                )
+            if risks:
+                metadata_lines.append(f"{dialect.strong('Risks:')} {risks}")
             lines.extend(
                 [
                     dialect.heading(dialect.record_heading_level + 2, record.title),
                     "",
-                    f"{dialect.strong('Parent:')} {record.metadata.get('parent', '')}",
-                    f"{dialect.strong('Interfaces:')} {interfaces_value}",
-                    f"{dialect.strong('Location:')} {locations}",
-                    f"{dialect.strong('Fulfilled requirements:')} "
-                    f"{fulfilled_requirements}"
-                    f"{dialect.strong('Risks:')} {risks}",
+                    *metadata_lines,
                     "",
                     record.body.strip() or dialect.placeholder(),
                     "",

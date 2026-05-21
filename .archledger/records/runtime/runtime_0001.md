@@ -2,6 +2,9 @@
 id: runtime_0001
 type: runtime_scenario
 title: "Create and render a new architecture record"
+schema_version: 2
+date: "2026-05-21"
+body_format: markdown
 status: accepted
 section: runtime_view
 order: 10
@@ -12,6 +15,9 @@ participants:
   - Render Layer
 trigger: "User invokes archledger new with kind, title, and status arguments"
 result: "A new Markdown record file is created and the architecture document can be rebuilt."
+source_refs:
+- archledger/cli.py
+- tests/test_repository_cli.py
 ---
 
 1. CLI parses the `new` command arguments (kind, title, status, parent, section).

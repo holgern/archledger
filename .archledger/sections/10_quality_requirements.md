@@ -3,6 +3,9 @@ id: section_quality_requirements
 type: section
 section: quality_requirements
 title: Quality Requirements
+schema_version: 2
+date: "2026-05-21"
+body_format: markdown
 order: 100
 status: accepted
 ---

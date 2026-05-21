@@ -3,6 +3,9 @@ id: section_risks_and_technical_debt
 type: section
 section: risks_and_technical_debt
 title: Risks and Technical Debt
+schema_version: 2
+date: "2026-05-21"
+body_format: markdown
 order: 110
 status: accepted
 ---

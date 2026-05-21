@@ -2,6 +2,9 @@
 id: black_box_0011
 type: black_box
 title: Migration Layer
+schema_version: 2
+date: "2026-05-20"
+body_format: markdown
 status: accepted
 section: building_block_view
 level: 1

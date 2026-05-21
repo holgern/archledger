@@ -3,6 +3,9 @@ id: section_cross_cutting_concepts
 type: section
 section: cross_cutting_concepts
 title: Cross-cutting Concepts
+schema_version: 2
+date: "2026-05-21"
+body_format: markdown
 order: 80
 status: accepted
 ---

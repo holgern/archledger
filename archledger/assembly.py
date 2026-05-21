@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 from jinja2 import Environment, PackageLoader, select_autoescape
@@ -87,7 +89,7 @@ def assemble_document(
     )
     rendered = template.render(
         title=repo.config.arc42_title,
-        date=utc_now_iso()[:10],
+        date=_document_date(records),
         generator=f"archledger {__version__}",
         arc42_template_version=repo.config.arc42_template_version,
         section_body=lambda section_key: section_body(sections, section_key, dialect),
@@ -122,6 +124,52 @@ def assemble_document(
         rendered_text=rendered,
         source_format=resolved_source_format,
     )
+
+
+def _document_date(records: list[ArchitectureRecord]) -> str:
+    source_date_epoch = os.getenv("SOURCE_DATE_EPOCH")
+    if source_date_epoch:
+        try:
+            timestamp = int(source_date_epoch)
+        except ValueError as exc:
+            raise RenderError("SOURCE_DATE_EPOCH must be an integer Unix timestamp.") from exc
+        return datetime.fromtimestamp(timestamp, tz=timezone.utc).date().isoformat()
+
+    latest_date: date | None = None
+    for record in records:
+        for key in ("updated_at", "date"):
+            metadata_value = record.metadata.get(key)
+            parsed = _parse_record_datetime(metadata_value)
+            if parsed is None:
+                continue
+            candidate = parsed.date()
+            if latest_date is None or candidate > latest_date:
+                latest_date = candidate
+
+    if latest_date is not None:
+        return latest_date.isoformat()
+    return utc_now_iso()[:10]
+
+
+def _parse_record_datetime(value: object) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    candidate = value.strip()
+    if not candidate:
+        return None
+    if len(candidate) == 10:
+        try:
+            return datetime.strptime(candidate, "%Y-%m-%d")
+        except ValueError:
+            return None
+
+    normalized = candidate
+    if normalized.endswith("Z"):
+        normalized = f"{normalized[:-1]}+00:00"
+    try:
+        return datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
 
 
 def assemble_asciidoc_document(

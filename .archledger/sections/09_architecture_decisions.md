@@ -3,6 +3,9 @@ id: section_architecture_decisions
 type: section
 section: architecture_decisions
 title: Architecture Decisions
+schema_version: 2
+date: "2026-05-21"
+body_format: markdown
 order: 90
 status: accepted
 ---

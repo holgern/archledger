@@ -2,6 +2,9 @@
 id: black_box_0010
 type: black_box
 title: Source Tracking Layer
+schema_version: 2
+date: "2026-05-20"
+body_format: markdown
 status: accepted
 section: building_block_view
 level: 1
@@ -24,6 +27,6 @@ source_refs:
 - archledger/storage/source_state.py
 ---
 
-The source tracking module detects changes between a baseline snapshot and the current workspace state. `scan_workspace` enumerates all tracked files using git or filesystem scanning, computes SHA-256 hashes, and records file sizes and mtimes. `diff_source_states` compares two snapshots to produce a `ChangeSet` listing added, modified, and deleted files with possible rename detection. `resolve_impacts` cross-references changed files with architecture record `source_refs` to identify which records and sections are impacted by the changes, and which changed files have no linked records.
+The source tracking module detects changes between a baseline snapshot and the current workspace state. `scan_workspace` enumerates tracked files using git or filesystem scanning, computes SHA-256 content hashes, and stores SHA-256-only file entries. It also derives directory hashes and file counts from the scanned file tree. `diff_source_states` compares two snapshots to produce a `ChangeSet` listing added, modified, and deleted files with possible rename detection. `resolve_impacts` cross-references changed files with architecture record `source_refs` to identify impacted records and unlinked changed files.
 
 The storage sub-module (`storage/source_state.py`) handles JSON serialization and deserialization of the source state, persisted alongside `storage.yaml`.
