@@ -8,6 +8,12 @@ from uuid import UUID
 from archledger.config.model import (
     DEFAULT_TRACKING_EXCLUDE,
     DEFAULT_TRACKING_INCLUDE,
+    VALID_BUILD_CONVERTERS,
+    VALID_DIAGRAM_IMAGE_FORMATS,
+    VALID_DIAGRAM_RENDERERS,
+    VALID_DIAGRAM_TYPES,
+    VALID_TRACKING_HASH_ALGORITHMS,
+    VALID_TRACKING_SCANNERS,
     ProjectConfig,
     normalize_project_name,
 )
@@ -80,14 +86,12 @@ _ALLOWED_DIAGRAM_KEYS = {
     "image_format",
     "kroki_url",
 }
-_ALLOWED_BUILD_CONVERTERS = frozenset({"auto", "pandoc", "asciidoctor"})
-_ALLOWED_TRACKING_SCANNERS = frozenset({"auto", "git", "filesystem"})
-_ALLOWED_TRACKING_HASH_ALGORITHMS = frozenset({"sha256"})
-_ALLOWED_DIAGRAM_RENDERERS = frozenset(
-    {"pass-through", "mermaid-cli", "svgbob", "goat", "asciidoctor-diagram", "kroki"}
-)
-_ALLOWED_DIAGRAM_TYPES = frozenset({"text", "ascii", "unicode", "svgbob", "mermaid"})
-_ALLOWED_DIAGRAM_IMAGE_FORMATS = frozenset({"svg", "png"})
+_ALLOWED_BUILD_CONVERTERS = VALID_BUILD_CONVERTERS
+_ALLOWED_TRACKING_SCANNERS = VALID_TRACKING_SCANNERS
+_ALLOWED_TRACKING_HASH_ALGORITHMS = VALID_TRACKING_HASH_ALGORITHMS
+_ALLOWED_DIAGRAM_RENDERERS = VALID_DIAGRAM_RENDERERS
+_ALLOWED_DIAGRAM_TYPES = VALID_DIAGRAM_TYPES
+_ALLOWED_DIAGRAM_IMAGE_FORMATS = VALID_DIAGRAM_IMAGE_FORMATS
 
 
 def load_project_config(path: Path) -> ProjectConfig:
@@ -535,10 +539,6 @@ def _parse_diagram_config(
         effective_data.get("kroki_url", ""),
         "diagrams.kroki_url",
     )
-    if renderer == "kroki" and not kroki_url:
-        raise ConfigError(
-            'diagrams.kroki_url must be set when diagrams.renderer is "kroki".'
-        )
     return enabled, renderer, default_type, output_dir, image_format, kroki_url
 
 

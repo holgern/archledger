@@ -6,6 +6,19 @@ from dataclasses import dataclass, field
 from archledger.errors import ConfigError
 from archledger.model import CURRENT_SOURCE_SCHEMA_VERSION
 
+# --- Public allowed-value constants ---
+# Shared by parse.py, render.py, and cli.py.
+VALID_BUILD_CONVERTERS: frozenset[str] = frozenset({"auto", "pandoc", "asciidoctor"})
+VALID_TRACKING_SCANNERS: frozenset[str] = frozenset({"auto", "git", "filesystem"})
+VALID_TRACKING_HASH_ALGORITHMS: frozenset[str] = frozenset({"sha256"})
+VALID_DIAGRAM_RENDERERS: frozenset[str] = frozenset(
+    {"pass-through", "mermaid-cli", "asciidoctor-diagram"}
+)
+VALID_DIAGRAM_TYPES: frozenset[str] = frozenset(
+    {"text", "ascii", "unicode", "svgbob", "mermaid"}
+)
+VALID_DIAGRAM_IMAGE_FORMATS: frozenset[str] = frozenset({"svg", "png"})
+
 DEFAULT_TRACKING_INCLUDE = (
     "**/*.py",
     "**/*.toml",

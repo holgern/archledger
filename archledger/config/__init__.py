@@ -12,7 +12,11 @@ from archledger.config.model import (
     normalize_project_name,
 )
 from archledger.config.parse import load_project_config
-from archledger.config.render import render_default_config, render_project_config
+from archledger.config.render import (
+    build_default_project_config,
+    render_default_config,
+    render_project_config,
+)
 
 __all__ = [
     "Arc42Config",
@@ -27,6 +31,7 @@ __all__ = [
     "TrackingConfig",
     "load_project_config",
     "normalize_project_name",
+    "build_default_project_config",
     "render_default_config",
     "render_project_config",
 ]

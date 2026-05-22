@@ -268,3 +268,174 @@ def test_repo_init_does_not_rewrite_existing_storage_meta_without_overwrite(
 
     assert storage_meta_path not in result.created_paths
     assert read_storage_meta(storage_meta_path).created_at == "1999-12-31T23:59:59Z"
+
+
+def test_init_diagram_options_write_expected_config(tmp_path: Path) -> None:
+    result = runner.invoke(
+        app,
+        [
+            "--root",
+            str(tmp_path),
+            "init",
+            "--diagrams",
+            "--diagram-renderer",
+            "mermaid-cli",
+            "--diagram-default-type",
+            "mermaid",
+            "--diagram-output-dir",
+            "assets/diagrams",
+            "--diagram-image-format",
+            "png",
+        ],
+    )
+    assert result.exit_code == 0
+    config_text = (tmp_path / "archledger.toml").read_text(encoding="utf-8")
+    assert "enabled = true" in config_text
+    assert 'renderer = "mermaid-cli"' in config_text
+    assert 'default_type = "mermaid"' in config_text
+    assert 'output_dir = "assets/diagrams"' in config_text
+    assert 'image_format = "png"' in config_text
+
+
+def test_init_no_diagrams_disables_diagrams(tmp_path: Path) -> None:
+    result = runner.invoke(
+        app,
+        ["--root", str(tmp_path), "init", "--no-diagrams"],
+    )
+    assert result.exit_code == 0
+    config_text = (tmp_path / "archledger.toml").read_text(encoding="utf-8")
+    assert "enabled = false" in config_text
+
+
+def test_init_build_options_write_expected_config(tmp_path: Path) -> None:
+    result = runner.invoke(
+        app,
+        [
+            "--root",
+            str(tmp_path),
+            "init",
+            "--source-format",
+            "markdown",
+            "--build-default-output",
+            "ARCHITECTURE.md",
+            "--build-default-output-dir",
+            ".",
+            "--build-include-draft",
+            "--build-include-superseded",
+            "--build-strict",
+            "--build-keep-intermediate",
+            "--build-converter",
+            "pandoc",
+            "--build-pdf-engine",
+            "xelatex",
+            "--build-reference-docx",
+            "template.docx",
+        ],
+    )
+    assert result.exit_code == 0
+    config_text = (tmp_path / "archledger.toml").read_text(encoding="utf-8")
+    assert 'default_output = "ARCHITECTURE.md"' in config_text
+    assert 'default_output_dir = "."' in config_text
+    assert "include_draft = true" in config_text
+    assert "include_superseded = true" in config_text
+    assert "strict = true" in config_text
+    assert "keep_intermediate = true" in config_text
+    assert 'converter = "pandoc"' in config_text
+    assert 'pdf_engine = "xelatex"' in config_text
+    assert 'reference_docx = "template.docx"' in config_text
+
+
+def test_init_arc42_options_write_expected_config(tmp_path: Path) -> None:
+    result = runner.invoke(
+        app,
+        [
+            "--root",
+            str(tmp_path),
+            "init",
+            "--arc42-title",
+            "My System",
+            "--arc42-language",
+            "de",
+            "--arc42-template-version",
+            "8.2-EN",
+            "--arc42-include-help",
+        ],
+    )
+    assert result.exit_code == 0
+    config_text = (tmp_path / "archledger.toml").read_text(encoding="utf-8")
+    assert 'title = "My System"' in config_text
+    assert 'language = "de"' in config_text
+    assert 'template_version = "8.2-EN"' in config_text
+    assert "include_help = true" in config_text
+
+
+def test_init_tracking_options_write_expected_config(tmp_path: Path) -> None:
+    result = runner.invoke(
+        app,
+        [
+            "--root",
+            str(tmp_path),
+            "init",
+            "--no-tracking",
+            "--tracking-scanner",
+            "filesystem",
+            "--tracking-state-file",
+            "custom-state.json",
+            "--tracking-max-file-bytes",
+            "5000",
+            "--tracking-include",
+            "src/**/*.py",
+            "--tracking-exclude",
+            "vendor/**",
+        ],
+    )
+    assert result.exit_code == 0
+    config_text = (tmp_path / "archledger.toml").read_text(encoding="utf-8")
+    assert "enabled = false" in config_text
+    assert 'scanner = "filesystem"' in config_text
+    assert 'state_file = "custom-state.json"' in config_text
+    assert "max_file_bytes = 5000" in config_text
+    assert '"src/**/*.py"' in config_text
+    assert '"vendor/**"' in config_text
+
+
+def test_init_project_uuid_option_is_stored(tmp_path: Path) -> None:
+    result = runner.invoke(
+        app,
+        [
+            "--root",
+            str(tmp_path),
+            "init",
+            "--project-uuid",
+            "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        ],
+    )
+    assert result.exit_code == 0
+    config_text = (tmp_path / "archledger.toml").read_text(encoding="utf-8")
+    assert '"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"' in config_text
+
+
+def test_init_invalid_project_uuid_is_rejected(tmp_path: Path) -> None:
+    result = runner.invoke(
+        app,
+        ["--root", str(tmp_path), "init", "--project-uuid", "not-a-uuid"],
+    )
+    assert result.exit_code == 1
+    assert "UUID" in result.output
+
+
+def test_init_invalid_diagram_renderer_is_rejected(tmp_path: Path) -> None:
+    result = runner.invoke(
+        app,
+        ["--root", str(tmp_path), "init", "--diagrams", "--diagram-renderer", "kroki"],
+    )
+    assert result.exit_code == 1
+    assert "renderer must be one of" in result.output
+
+
+def test_init_skill_installed_defaults_to_false(tmp_path: Path) -> None:
+    result = runner.invoke(app, ["--root", str(tmp_path), "init"])
+    assert result.exit_code == 0
+    config_text = (tmp_path / "archledger.toml").read_text(encoding="utf-8")
+    # Under [skill] section, installed should be false
+    assert "installed = false" in config_text

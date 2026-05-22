@@ -181,13 +181,15 @@ def test_convert_sources_preserves_v5_tracking_and_build_config(
     )
     config_text = config_text.replace(
         'converter = "auto"',
-        "\n".join(
-            [
-                'converter = "pandoc"',
-                'pdf_engine = "tectonic"',
-                'reference_docx = "docs/reference.docx"',
-            ]
-        ),
+        'converter = "pandoc"',
+    )
+    config_text = config_text.replace(
+        'pdf_engine = ""',
+        'pdf_engine = "tectonic"',
+    )
+    config_text = config_text.replace(
+        'reference_docx = ""',
+        'reference_docx = "docs/reference.docx"',
     )
     config_path.write_text(
         config_text + "\n[build.outputs.html]\n"

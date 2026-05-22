@@ -344,7 +344,7 @@ def test_v5_config_supports_build_diagrams_table(tmp_path: Path) -> None:
     assert config.diagram_default_type == "mermaid"
 
 
-def test_kroki_renderer_requires_explicit_kroki_url(tmp_path: Path) -> None:
+def test_kroki_renderer_is_rejected_as_unsupported(tmp_path: Path) -> None:
     workspace_root = tmp_path / "workspace-v5-kroki"
     workspace_root.mkdir()
     (workspace_root / "archledger.toml").write_text(
@@ -368,10 +368,7 @@ def test_kroki_renderer_requires_explicit_kroki_url(tmp_path: Path) -> None:
 
     with pytest.raises(ConfigError) as excinfo:
         resolve_project_paths(workspace_root)
-    assert (
-        str(excinfo.value)
-        == 'diagrams.kroki_url must be set when diagrams.renderer is "kroki".'
-    )
+    assert "diagrams.renderer must be one of" in str(excinfo.value)
 
 
 def test_tracking_state_file_must_stay_inside_archledger_dir(tmp_path: Path) -> None:

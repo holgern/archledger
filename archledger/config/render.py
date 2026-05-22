@@ -4,15 +4,131 @@ import json
 from pathlib import Path
 from uuid import UUID, uuid4
 
-from archledger.config.model import ProjectConfig, normalize_project_name
+from archledger.config.model import (
+    DEFAULT_TRACKING_EXCLUDE,
+    DEFAULT_TRACKING_INCLUDE,
+    VALID_BUILD_CONVERTERS,
+    VALID_DIAGRAM_IMAGE_FORMATS,
+    VALID_DIAGRAM_RENDERERS,
+    VALID_DIAGRAM_TYPES,
+    VALID_TRACKING_SCANNERS,
+    ProjectConfig,
+    normalize_project_name,
+)
 from archledger.errors import ConfigError
 from archledger.model import (
-    CURRENT_SOURCE_SCHEMA_VERSION,
     VALID_SOURCE_FORMATS,
     default_document_filename_for_output_format,
     default_extension_for_source_format,
     native_output_format_for_source_format,
 )
+
+
+def build_default_project_config(
+    workspace_root: Path,
+    *,
+    archledger_dir: str,
+    source_format: str = "asciidoc",
+    project_name: str | None = None,
+    project_uuid: str | None = None,
+    # Build options
+    build_default_format: str | None = None,
+    build_default_output: str | None = None,
+    build_default_output_dir: str | None = None,
+    build_include_draft: bool = False,
+    build_include_superseded: bool = False,
+    build_strict: bool = False,
+    build_keep_intermediate: bool = False,
+    build_converter: str = "auto",
+    build_pdf_engine: str = "",
+    build_reference_docx: str = "",
+    # Diagram options
+    diagram_enabled: bool = False,
+    diagram_renderer: str = "pass-through",
+    diagram_default_type: str = "text",
+    diagram_output_dir: str = "diagrams",
+    diagram_image_format: str = "svg",
+    diagram_kroki_url: str = "",
+    # arc42 options
+    arc42_template_version: str = "9.0-EN",
+    arc42_language: str = "en",
+    arc42_title: str = "Architecture Documentation",
+    arc42_include_help: bool = False,
+    # Tracking options
+    tracking_enabled: bool = True,
+    tracking_scanner: str = "auto",
+    tracking_state_file: str = "source-state.json",
+    tracking_max_file_bytes: int = 1_000_000,
+    tracking_include: tuple[str, ...] | None = None,
+    tracking_exclude: tuple[str, ...] | None = None,
+) -> ProjectConfig:
+    normalized_source_format = source_format.strip().lower()
+    if normalized_source_format not in VALID_SOURCE_FORMATS:
+        raise ConfigError(
+            "source_format must be one of: "
+            + ", ".join(sorted(VALID_SOURCE_FORMATS))
+            + "."
+        )
+    # Validate enum-like values before writing config
+    _validate_enum(diagram_renderer, VALID_DIAGRAM_RENDERERS, "diagrams.renderer")
+    _validate_enum(diagram_default_type, VALID_DIAGRAM_TYPES, "diagrams.default_type")
+    _validate_enum(
+        diagram_image_format, VALID_DIAGRAM_IMAGE_FORMATS, "diagrams.image_format"
+    )
+    _validate_enum(build_converter, VALID_BUILD_CONVERTERS, "build.converter")
+    _validate_enum(tracking_scanner, VALID_TRACKING_SCANNERS, "tracking.scanner")
+
+    default_extension = default_extension_for_source_format(normalized_source_format)
+    native_format = native_output_format_for_source_format(normalized_source_format)
+    resolved_default_format = build_default_format or native_format
+    resolved_default_output = (
+        build_default_output
+        or default_document_filename_for_output_format(resolved_default_format)
+    )
+    normalized_project_name = normalize_project_name(
+        workspace_root.name if project_name is None else project_name
+    )
+    normalized_uuid = (
+        str(uuid4()) if project_uuid is None else _validate_uuid(project_uuid)
+    )
+    return ProjectConfig(
+        config_version=5,
+        archledger_dir=archledger_dir,
+        project_uuid=normalized_uuid,
+        project_name=normalized_project_name,
+        source_format=normalized_source_format,
+        front_matter="yaml",
+        section_extension=default_extension,
+        record_extension=default_extension,
+        build_default_output=resolved_default_output,
+        build_default_format=resolved_default_format,
+        build_output_dir=build_default_output_dir or "build",
+        build_include_draft=build_include_draft,
+        build_include_superseded=build_include_superseded,
+        build_strict=build_strict,
+        build_keep_intermediate=build_keep_intermediate,
+        build_converter=build_converter,
+        build_pdf_engine=build_pdf_engine,
+        build_reference_docx=build_reference_docx,
+        arc42_template_version=arc42_template_version,
+        arc42_language=arc42_language,
+        arc42_title=arc42_title,
+        arc42_include_help=arc42_include_help,
+        skill_installed=False,
+        skill_path="skills/archledger/SKILL.md",
+        tracking_enabled=tracking_enabled,
+        tracking_state_file=tracking_state_file,
+        tracking_scanner=tracking_scanner,
+        tracking_include=tracking_include or DEFAULT_TRACKING_INCLUDE,
+        tracking_exclude=tracking_exclude or DEFAULT_TRACKING_EXCLUDE,
+        tracking_max_file_bytes=tracking_max_file_bytes,
+        diagram_enabled=diagram_enabled,
+        diagram_renderer=diagram_renderer,
+        diagram_default_type=diagram_default_type,
+        diagram_output_dir=diagram_output_dir,
+        diagram_image_format=diagram_image_format,
+        diagram_kroki_url=diagram_kroki_url,
+    )
 
 
 def render_default_config(
@@ -23,103 +139,14 @@ def render_default_config(
     project_name: str | None = None,
     project_uuid: str | None = None,
 ) -> str:
-    normalized_source_format = source_format.strip().lower()
-    if normalized_source_format not in VALID_SOURCE_FORMATS:
-        raise ConfigError(
-            "source_format must be one of: "
-            + ", ".join(sorted(VALID_SOURCE_FORMATS))
-            + "."
-        )
-    default_extension = default_extension_for_source_format(normalized_source_format)
-    default_format = native_output_format_for_source_format(normalized_source_format)
-    default_output = default_document_filename_for_output_format(default_format)
-    normalized_project_name = normalize_project_name(
-        workspace_root.name if project_name is None else project_name
+    config = build_default_project_config(
+        workspace_root,
+        archledger_dir=archledger_dir,
+        source_format=source_format,
+        project_name=project_name,
+        project_uuid=project_uuid,
     )
-    normalized_uuid = (
-        str(uuid4()) if project_uuid is None else _validate_uuid(project_uuid)
-    )
-    return "\n".join(
-        [
-            "# Project-local archledger configuration.",
-            "# This file lives in the source project root.",
-            "config_version = 5",
-            f"archledger_dir = {_toml_string(archledger_dir)}",
-            "",
-            "# Stable project identity. Commit this with your source tree.",
-            f"project_uuid = {_toml_string(normalized_uuid)}",
-            f"project_name = {_toml_string(normalized_project_name)}",
-            "",
-            "[source]",
-            f"format = {_toml_string(normalized_source_format)}",
-            f"front_matter = {_toml_string('yaml')}",
-            f"section_extension = {_toml_string(default_extension)}",
-            f"record_extension = {_toml_string(default_extension)}",
-            f"schema_version = {CURRENT_SOURCE_SCHEMA_VERSION}",
-            "",
-            "[build]",
-            f"default_format = {_toml_string(default_format)}",
-            f"default_output = {_toml_string(default_output)}",
-            "# [build].default_output_dir is relative to the directory containing",
-            "# archledger.toml or .archledger.toml.",
-            f"default_output_dir = {_toml_string('build')}",
-            "include_draft = false",
-            "include_superseded = false",
-            "strict = false",
-            "keep_intermediate = false",
-            f"converter = {_toml_string('auto')}",
-            "",
-            "[diagrams]",
-            "enabled = false",
-            f"renderer = {_toml_string('pass-through')}",
-            f"default_type = {_toml_string('text')}",
-            f"output_dir = {_toml_string('diagrams')}",
-            f"image_format = {_toml_string('svg')}",
-            f"kroki_url = {_toml_string('')}",
-            "",
-            "[arc42]",
-            f"template_version = {_toml_string('9.0-EN')}",
-            f"language = {_toml_string('en')}",
-            f"title = {_toml_string('Architecture Documentation')}",
-            "include_help = false",
-            "",
-            "[skill]",
-            "installed = true",
-            f"path = {_toml_string('skills/archledger/SKILL.md')}",
-            "",
-            "[tracking]",
-            "enabled = true",
-            "# source-state.json stores SHA-256 content hashes only for files.",
-            "# It does not persist mtimes or file sizes. Directory hashes are",
-            "# derived from file hashes after scanning.",
-            f"state_file = {_toml_string('source-state.json')}",
-            f"scanner = {_toml_string('auto')}",
-            "include = [",
-            f"  {_toml_string('**/*.py')},",
-            f"  {_toml_string('**/*.toml')},",
-            f"  {_toml_string('**/*.md')},",
-            f"  {_toml_string('**/*.adoc')},",
-            f"  {_toml_string('**/*.rst')},",
-            f"  {_toml_string('**/*.j2')},",
-            f"  {_toml_string('**/*.yaml')},",
-            f"  {_toml_string('**/*.yml')},",
-            f"  {_toml_string('**/*.json')},",
-            "]",
-            "exclude = [",
-            f"  {_toml_string('.git/**')},",
-            f"  {_toml_string('.venv/**')},",
-            f"  {_toml_string('**/__pycache__/**')},",
-            f"  {_toml_string('.mypy_cache/**')},",
-            f"  {_toml_string('.pytest_cache/**')},",
-            f"  {_toml_string('.ruff_cache/**')},",
-            f"  {_toml_string('dist/**')},",
-            f"  {_toml_string('build/**')},",
-            "]",
-            "max_file_bytes = 1000000",
-            f"hash_algorithm = {_toml_string('sha256')}",
-            "",
-        ]
-    )
+    return render_project_config(config)
 
 
 def render_project_config(config: ProjectConfig) -> str:
@@ -236,3 +263,11 @@ def _validate_uuid(value: str) -> str:
         return str(UUID(value))
     except ValueError as exc:
         raise ConfigError("project_uuid must be a valid UUID.") from exc
+
+
+def _validate_enum(value: str, allowed: frozenset[str], field_name: str) -> None:
+    normalized = value.strip().lower()
+    if normalized not in allowed:
+        raise ConfigError(
+            f"{field_name} must be one of: " + ", ".join(sorted(allowed)) + "."
+        )

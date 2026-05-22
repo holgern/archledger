@@ -131,7 +131,7 @@ from archledger.storage.paths import (
 )
 from archledger.storage.project_config import (
     ProjectConfig,
-    render_default_config,
+    build_default_project_config,
 )
 from archledger.storage.source_state import read_source_state, write_source_state
 
@@ -232,6 +232,13 @@ def init(
             help="Stable project identity stored in archledger.toml.",
         ),
     ] = None,
+    project_uuid: Annotated[
+        str | None,
+        typer.Option(
+            "--project-uuid",
+            help="Stable project UUID. Auto-generated when omitted.",
+        ),
+    ] = None,
     source_format: Annotated[
         str,
         typer.Option(
@@ -239,6 +246,152 @@ def init(
             help="Canonical source dialect for new project fragments.",
         ),
     ] = "asciidoc",
+    # Build options
+    build_default_format: Annotated[
+        str | None,
+        typer.Option(
+            "--build-default-format",
+            help="Default build output format (markdown, asciidoc, pdf, docx).",
+        ),
+    ] = None,
+    build_default_output: Annotated[
+        str | None,
+        typer.Option("--build-default-output", help="Default build output filename."),
+    ] = None,
+    build_default_output_dir: Annotated[
+        str | None,
+        typer.Option(
+            "--build-default-output-dir",
+            help="Build output directory, relative to config path.",
+        ),
+    ] = None,
+    build_include_draft: Annotated[
+        bool,
+        typer.Option(
+            "--build-include-draft", help="Include draft records in build output."
+        ),
+    ] = False,
+    build_include_superseded: Annotated[
+        bool,
+        typer.Option(
+            "--build-include-superseded",
+            help="Include superseded records in build output.",
+        ),
+    ] = False,
+    build_strict: Annotated[
+        bool,
+        typer.Option("--build-strict", help="Enable strict build mode."),
+    ] = False,
+    build_keep_intermediate: Annotated[
+        bool,
+        typer.Option(
+            "--build-keep-intermediate", help="Keep intermediate build files."
+        ),
+    ] = False,
+    build_converter: Annotated[
+        str,
+        typer.Option(
+            "--build-converter",
+            help="Build converter tool (auto, pandoc, asciidoctor).",
+        ),
+    ] = "auto",
+    build_pdf_engine: Annotated[
+        str,
+        typer.Option("--build-pdf-engine", help="PDF engine for pandoc builds."),
+    ] = "",
+    build_reference_docx: Annotated[
+        str,
+        typer.Option(
+            "--build-reference-docx", help="Reference docx template for pandoc builds."
+        ),
+    ] = "",
+    # Diagram options
+    diagrams: Annotated[
+        bool,
+        typer.Option("--diagrams/--no-diagrams", help="Enable diagram support."),
+    ] = False,
+    diagram_renderer: Annotated[
+        str,
+        typer.Option(
+            "--diagram-renderer",
+            help="Diagram renderer (pass-through, mermaid-cli, asciidoctor-diagram).",
+        ),
+    ] = "pass-through",
+    diagram_default_type: Annotated[
+        str,
+        typer.Option(
+            "--diagram-default-type",
+            help="Default diagram type (text, ascii, unicode, svgbob, mermaid).",
+        ),
+    ] = "text",
+    diagram_output_dir: Annotated[
+        str,
+        typer.Option("--diagram-output-dir", help="Diagram output directory."),
+    ] = "diagrams",
+    diagram_image_format: Annotated[
+        str,
+        typer.Option("--diagram-image-format", help="Diagram image format (svg, png)."),
+    ] = "svg",
+    diagram_kroki_url: Annotated[
+        str,
+        typer.Option(
+            "--diagram-kroki-url",
+            help="Kroki server URL (unused in supported renderers).",
+        ),
+    ] = "",
+    # arc42 options
+    arc42_title: Annotated[
+        str,
+        typer.Option("--arc42-title", help="arc42 template title."),
+    ] = "Architecture Documentation",
+    arc42_language: Annotated[
+        str,
+        typer.Option("--arc42-language", help="arc42 template language."),
+    ] = "en",
+    arc42_template_version: Annotated[
+        str,
+        typer.Option("--arc42-template-version", help="arc42 template version."),
+    ] = "9.0-EN",
+    arc42_include_help: Annotated[
+        bool,
+        typer.Option(
+            "--arc42-include-help/--no-arc42-include-help",
+            help="Include arc42 help sections.",
+        ),
+    ] = False,
+    # Tracking options
+    tracking: Annotated[
+        bool,
+        typer.Option("--tracking/--no-tracking", help="Enable source tracking."),
+    ] = True,
+    tracking_scanner: Annotated[
+        str,
+        typer.Option(
+            "--tracking-scanner", help="Tracking scanner (auto, git, filesystem)."
+        ),
+    ] = "auto",
+    tracking_state_file: Annotated[
+        str,
+        typer.Option("--tracking-state-file", help="Tracking state filename."),
+    ] = "source-state.json",
+    tracking_max_file_bytes: Annotated[
+        int,
+        typer.Option(
+            "--tracking-max-file-bytes", help="Maximum file size in bytes for tracking."
+        ),
+    ] = 1_000_000,
+    tracking_include: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--tracking-include", help="Glob pattern for tracking includes. Repeatable."
+        ),
+    ] = None,
+    tracking_exclude: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--tracking-exclude", help="Glob pattern for tracking excludes. Repeatable."
+        ),
+    ] = None,
 ) -> None:
     state = _state(ctx)
     workspace_root = state.root.resolve()
@@ -250,15 +403,45 @@ def init(
             ArchledgerError(f"Config file already exists: {config_path}"),
         )
     try:
-        config_text = render_default_config(
+        config = build_default_project_config(
             workspace_root,
             archledger_dir=archledger_dir,
             source_format=source_format,
             project_name=project_name,
+            project_uuid=project_uuid,
+            build_default_format=build_default_format,
+            build_default_output=build_default_output,
+            build_default_output_dir=build_default_output_dir,
+            build_include_draft=build_include_draft,
+            build_include_superseded=build_include_superseded,
+            build_strict=build_strict,
+            build_keep_intermediate=build_keep_intermediate,
+            build_converter=build_converter,
+            build_pdf_engine=build_pdf_engine,
+            build_reference_docx=build_reference_docx,
+            diagram_enabled=diagrams,
+            diagram_renderer=diagram_renderer,
+            diagram_default_type=diagram_default_type,
+            diagram_output_dir=diagram_output_dir,
+            diagram_image_format=diagram_image_format,
+            diagram_kroki_url=diagram_kroki_url,
+            arc42_title=arc42_title,
+            arc42_language=arc42_language,
+            arc42_template_version=arc42_template_version,
+            arc42_include_help=arc42_include_help,
+            tracking_enabled=tracking,
+            tracking_scanner=tracking_scanner,
+            tracking_state_file=tracking_state_file,
+            tracking_max_file_bytes=tracking_max_file_bytes,
+            tracking_include=tuple(tracking_include) if tracking_include else None,
+            tracking_exclude=tuple(tracking_exclude) if tracking_exclude else None,
         )
+        from archledger.config.render import render_project_config as _render
+
+        config_text = _render(config)
         write_text_atomic(config_path, config_text)
-        paths, config, warnings = resolve_project_paths(workspace_root)
-        repo = ArchitectureRepository(paths, config)
+        paths, resolved_config, warnings = resolve_project_paths(workspace_root)
+        repo = ArchitectureRepository(paths, resolved_config)
         result = repo.init()
         payload = _init_payload(result)
         _emit_success(
