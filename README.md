@@ -1,3 +1,8 @@
+[![PyPI - Version](https://img.shields.io/pypi/v/archledger)](https://pypi.org/project/archedger/)
+![PyPI - Python Version](https://img.shields.io/pypi/pyversions/archledger)
+![PyPI - Downloads](https://img.shields.io/pypi/dm/archledger)
+[![codecov](https://codecov.io/gh/holgern/archledger/graph/badge.svg?token=HdtZhZi9li)](https://codecov.io/gh/holgern/archledger)
+
 # archledger
 
 `archledger` is a source-first arc42 documentation tool. It stores architecture
