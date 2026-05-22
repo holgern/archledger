@@ -1,7 +1,7 @@
 ---
 title: "archledger Architecture Documentation"
-date: "1980-01-01"
-generator: "archledger 0.1.dev19+g3fc619560.d19800101"
+date: "2026-05-22"
+generator: "archledger 0.1.1.dev1+g15fa163cd"
 arc42_template_version: "9.0-EN"
 ---
 
@@ -84,7 +84,7 @@ archledger operates under several technical constraints that shape its architect
 
 archledger interacts with three external partners: the source repository (reads config and records, writes build output), coding agents (CLI invocations with JSON output), and CI pipelines (exit codes and build artifacts). Optional external converters (pandoc, asciidoctor, asciidoctor-pdf) are invoked as subprocesses for multi-format exports. All communication is local filesystem access, process I/O, or subprocess invocation.
 
-See the [System Context diagram](#diagram-al_0091) for a visual overview of actors and system boundaries.
+See the [System Context diagram](#diagram-al_0035) for a visual overview of actors and system boundaries.
 
 ## System Context
 
@@ -128,7 +128,7 @@ archledger operates as a local CLI tool. External actors interact through shell 
 - **Coding agent harness** -> Coding Agent
   - Coding agents (pi, opencode, etc.) invoke archledger through its CLI, passing `--json` for machine-readable output. The agent skill file (`SKILL.md`) provides the protocol for how agents should interact with archledger: locate config, inspect records via `read`, detect changes via `source changed`, create/update in batches via `new`, validate with `check`, render with `build`, and persist baselines with `source snapshot`.
 - **CI pipeline** -> CI runner
-  - A CI runner can execute `archledger check` to validate record integrity and `archledger build` to produce the rendered document. Non-zero exit codes signal validation failures. The built Markdown can be published as a CI artifact or deployed to a documentation site.
+  - A CI runner can execute `archledger check` to validate record integrity and `archledger build` to produce the rendered document. Non-zero exit codes signal validation failures. The built Markdown can be published as a CI artifact or deployed to a documentation site. The project uses GitHub Actions for CI (`.github/workflows/tests.yml` for test execution, `.github/workflows/codecov.yml` for coverage reporting, `.github/workflows/pre-commit.yml` for linting, and `.github/workflows/python-publish.yml` for PyPI releases).
 
 # Solution Strategy
 
@@ -136,7 +136,7 @@ The fundamental approach is a file-based pipeline: human-editable Markdown or As
 
 A source tracking subsystem (`source snapshot`/`source changed`) allows agents to detect which source files changed since the last baseline and which architecture records are impacted via `source_refs` linkage.
 
-The build pipeline is visualized in the [Build Pipeline Flow diagram](#diagram-al_0093) in the runtime view.
+The build pipeline is visualized in the [Build Pipeline Flow diagram](#diagram-al_0059) in the runtime view.
 
 ## Strategy Items
 
@@ -144,7 +144,7 @@ The build pipeline is visualized in the [Build Pipeline Flow diagram](#diagram-a
 
 **Drivers:** Maintainability, Traceability, Reproducibility
 **Constraints:** Markdown or AsciiDoc with YAML front matter as canonical source, No external database dependency, Typer CLI interface
-**Related ADRs:** al_0087, al_0088, al_0089
+**Related ADRs:** al_0077, al_0078, al_0079
 
 ## Strategy
 
@@ -159,7 +159,7 @@ The core approach is a four-stage pipeline: author (create/edit Markdown or Asci
 
 The system is decomposed into fifteen black boxes within a single white box. The CLI Layer receives user input and delegates output formatting, the Config Layer parses and renders project configuration, the Repository Layer orchestrates business logic, the Model Layer defines core data structures and validation, the Record Type Registry maps record types to templates and defaults, the Check Layer validates record content per type, the Source Ref Validation layer normalizes traceability links, the Storage Layer handles file I/O, the Assembly Layer renders the document via Jinja2 templates, the Dialect Layer abstracts format-specific markup, the Section Rendering Layer handles per-record-type output, the Render Layer orchestrates the build pipeline, the Converter Layer handles multi-format export, the Source Tracking Layer detects changes and impacts, and the Migration Layer converts between source dialects.
 
-See the [Building Block Layer Structure diagram](#diagram-al_0092) for a visual decomposition showing the layer relationships.
+See the [Building Block Layer Structure diagram](#diagram-al_0040) for a visual decomposition showing the layer relationships.
 
 ## Building Block Layer Structure
 
@@ -240,6 +240,8 @@ The primary interface is the CLI (`archledger` console script). The CLI delegate
 The Typer-based CLI exposes top-level commands: `init`, `status`, `paths`, `schema`, `new`, `seed`, `list`, `show`, `read`, `check`, `build`, and the `source` subgroup. The `source` subgroup contains `snapshot`, `changed`, and `convert` for source tracking and dialect migration. Each command resolves the project config, constructs a Repository, and delegates to it. Two output modes are supported: human-readable text (default) and structured JSON (`--json` flag). Error handling maps domain exceptions (`ArchledgerError` subclasses) to appropriate exit codes and error output.
 
 Output is split across three modules: `cli.py` defines Typer commands and dispatches to the Repository, `cli_payloads.py` constructs structured JSON dictionaries from domain result types, and `cli_formatting.py` renders human-readable messages from those payloads. This separation keeps the command definitions thin and testable.
+
+The `init` command accepts comprehensive CLI options covering all configuration domains: build defaults (`--build-default-format`, `--build-converter`, `--build-pdf-engine`, etc.), diagrams (`--diagrams`, `--diagram-renderer`, `--diagram-default-type`), arc42 metadata (`--arc42-title`, `--arc42-language`, `--arc42-template-version`), and source tracking (`--tracking/--no-tracking`, `--tracking-scanner`, `--tracking-include`, `--tracking-exclude`). Options are validated against shared constants from `config/model.py` before config generation.
 
 The `source snapshot` and `source changed` commands integrate the source tracking subsystem. The `source convert` command delegates to the migration module for Markdown-to-AsciiDoc source conversion.
 
@@ -330,12 +332,14 @@ The migration module converts source fragments from one dialect to another. Curr
 #### Config Layer
 
 **Parent:** al_0041
-**Interfaces:** load_project_config(), render_default_config(), ProjectConfig dataclass
+**Interfaces:** load_project_config(), build_default_project_config(), render_project_config(), ProjectConfig dataclass
 **Location:** archledger/config/**init**.py, archledger/config/model.py, archledger/config/parse.py, archledger/config/render.py
 
-The `config` subpackage owns all project configuration concerns. `config/model.py` defines frozen dataclasses for each configuration domain: `SourceConfig`, `BuildConfig` (with nested `BuildOutputConfig`), `Arc42Config`, `SkillConfig`, `TrackingConfig`, and the unified `ProjectConfig` facade that composes them via properties. `config/parse.py` loads and validates `archledger.toml` using `tomllib` (or `tomli` for Python < 3.11), with strict key validation and environment variable expansion. `config/render.py` generates default configuration files for `archledger init`. The subpackage re-exports key types from `__init__.py`.
+The `config` subpackage owns all project configuration concerns. `config/model.py` defines frozen dataclasses for each configuration domain: `SourceConfig`, `BuildConfig` (with nested `BuildOutputConfig`), `Arc42Config`, `SkillConfig`, `TrackingConfig`, and the unified `ProjectConfig` facade that composes them via properties. It also exports public allowed-value constants (`VALID_BUILD_CONVERTERS`, `VALID_DIAGRAM_RENDERERS`, `VALID_DIAGRAM_TYPES`, `VALID_DIAGRAM_IMAGE_FORMATS`, `VALID_TRACKING_SCANNERS`) shared by `parse.py`, `render.py`, and `cli.py`.
 
-The `[diagrams]` section supports five diagram types (`text`, `ascii`, `unicode`, `svgbob`, `mermaid`) and six renderers (`pass-through`, `mermaid-cli`, `svgbob`, `goat`, `asciidoctor-diagram`, `kroki`). The default diagram type is `text`, ensuring that new diagram records produce readable text-based diagrams in native builds without any external tooling.
+`config/parse.py` loads and validates `archledger.toml` using `tomllib` (or `tomli` for Python < 3.11), with strict key validation and environment variable expansion. `config/render.py` generates default configuration files for `archledger init` via a two-stage pipeline: `build_default_project_config()` constructs a validated `ProjectConfig` dataclass from init parameters (including build, diagram, arc42, and tracking options), and `render_project_config()` serializes it to TOML.
+
+The `[diagrams]` section supports five diagram types (`text`, `ascii`, `unicode`, `svgbob`, `mermaid`) and three renderers (`pass-through`, `mermaid-cli`, `asciidoctor-diagram`). The default diagram type is `text`, ensuring that new diagram records produce readable text-based diagrams in native builds without any external tooling.
 
 #### Record Type Registry
 
@@ -369,11 +373,19 @@ This module was extracted from `repository.py` to isolate validation logic.
 
 The `source_refs.py` module handles validation and normalization of source traceability links on architecture records. `validate_relative_posix_path()` enforces that source ref paths are relative, use POSIX separators, and do not traverse parent directories. `normalize_source_refs()` processes the raw `source_refs` list from YAML front matter, supporting both shorthand string syntax (`path/to/file.py#SymbolName`) and full mapping syntax with explicit path, symbols, and reason. It verifies that referenced paths and directories actually exist in the workspace. `RelativePosixPathError` provides structured error reporting for invalid paths. This module was extracted from `model.py` to keep source ref validation independent from the core data model.
 
+#### ID Utilities
+
+**Parent:** al_0041
+**Interfaces:** format_ledger_id(), parse_ledger_id(), is_ledger_id(), filename_for_ledger_id(), ledger_id_from_filename()
+**Location:** archledger/ids.py
+
+The `ids` module provides centralized ledger ID handling functions: `format_ledger_id()` converts an integer to the `al_NNNN` string format, `parse_ledger_id()` extracts the numeric part, `is_ledger_id()` validates a string, and `filename_for_ledger_id()` / `ledger_id_from_filename()` convert between IDs and filenames. These utilities were extracted from `storage/meta.py` and `storage/paths.py` to provide a single source of truth for ID format rules (`al_` prefix, 4-digit zero-padded number).
+
 # Runtime View
 
 Key runtime scenarios: initializing a new project (scaffolding directories and section files), creating and rendering records (the primary authoring flow), validating records with check (ensuring consistency and completeness), building multi-format output (assembly plus optional conversion), taking source snapshots and detecting changes (source tracking), and converting source dialects (Markdown to AsciiDoc migration).
 
-See the [Build Pipeline Flow diagram](#diagram-al_0093) for a visual overview of the four-stage pipeline.
+See the [Build Pipeline Flow diagram](#diagram-al_0059) for a visual overview of the four-stage pipeline.
 
 ## Build Pipeline Flow
 
@@ -432,13 +444,14 @@ delegate to pandoc or asciidoctor.
 ## Initialize a new project
 
 1. CLI checks that `archledger.toml` does not already exist.
-2. CLI renders the default TOML config with a generated project UUID, name derived from the directory, and source format from the `--source-format` option (defaults to `asciidoc`).
-3. CLI writes the config file and resolves project paths.
-4. Repository creates the archledger_dir, sections_dir, records_dir, and build_dir.
-5. Repository creates 15 record subdirectories (one per record type directory).
-6. Repository writes 12 section Markdown files (01_introduction_and_goals through 12_glossary) with section extensions matching the configured source format.
-7. Repository writes the storage.yaml metadata file.
-8. The project is ready for `archledger new` commands.
+2. CLI collects init options for all configuration domains: build defaults (`--build-default-format`, `--build-default-output`, `--build-converter`, etc.), diagrams (`--diagrams`, `--diagram-renderer`, `--diagram-default-type`), arc42 metadata (`--arc42-title`, `--arc42-language`, `--arc42-template-version`), and source tracking (`--tracking/--no-tracking`, `--tracking-scanner`, `--tracking-include`, `--tracking-exclude`). Each option maps directly to a field in `archledger.toml`.
+3. CLI calls `build_default_project_config()` to construct a validated `ProjectConfig` dataclass, then renders it to TOML via `render_project_config()`.
+4. CLI writes the config file and resolves project paths.
+5. Repository creates the archledger_dir, sections_dir, records_dir, and build_dir.
+6. Repository creates 15 record subdirectories (one per record type directory).
+7. Repository writes 12 section Markdown files (01_introduction_and_goals through 12_glossary) with section extensions matching the configured source format.
+8. Repository writes the storage.yaml metadata file.
+9. The project is ready for `archledger new` commands.
 
 ## Build multi-format output
 
@@ -464,7 +477,7 @@ delegate to pandoc or asciidoctor.
 
 archledger runs as a local CLI tool on developer machines and in CI runners. There is no server component. The storage directory can be co-located with the source repository or placed in an external path via configuration.
 
-See the [Deployment Topology diagram](#diagram-al_0094) for a visual overview of deployment nodes.
+See the [Deployment Topology diagram](#diagram-al_0063) for a visual overview of deployment nodes.
 
 ## Deployment Topology
 
@@ -537,7 +550,7 @@ CI release validation runs unit tests, package build checks, version consistency
 
 Four cross-cutting concepts pervade the architecture: the record lifecycle (draft, proposed, accepted, deprecated, superseded) which controls visibility and validation behavior, the config discovery mechanism which resolves project paths from the workspace directory upward, the dialect abstraction which ensures format-neutral rendering for both Markdown and AsciiDoc sources, and the multi-type diagram record system which supports text, ascii, unicode, svgbob, and mermaid diagram types with type-appropriate validation and templating.
 
-A fourth cross-cutting concern is source tracking and change impact analysis, which is visualized in the [Source Tracking Flow diagram](#diagram-al_0095).
+A fourth cross-cutting concern is source tracking and change impact analysis, which is visualized in the [Source Tracking Flow diagram](#diagram-al_0076).
 
 ## Source Tracking Flow
 
@@ -589,7 +602,7 @@ Every record has a status field that controls its lifecycle: `draft` (incomplete
 
 archledger discovers its project configuration by walking up from the current directory looking for `archledger.toml` or `.archledger.toml`. The `archledger_dir` setting in the config can be relative (resolved from the config file's directory) or absolute (used as-is). This allows the storage directory to live outside the source tree, for example in a separate state repository.
 
-Config parsing is handled by the Config Layer (`config/` subpackage): `config/parse.py` loads and validates the TOML file, `config/model.py` defines typed dataclasses for each configuration domain (source, build, arc42, skill, tracking), and `config/render.py` generates default configuration files for `archledger init`. Path resolution happens in `storage/paths.py`.
+Config parsing is handled by the Config Layer (`config/` subpackage): `config/parse.py` loads and validates the TOML file, `config/model.py` defines typed dataclasses for each configuration domain (source, build, arc42, skill, tracking) and exports shared validation constants, and `config/render.py` generates configuration files via `build_default_project_config()` + `render_project_config()`. Path resolution happens in `storage/paths.py`.
 
 ## Dialect abstraction for dual-source support
 
@@ -607,7 +620,7 @@ Diagram records support five types: `text`, `ascii`, `unicode`, `svgbob`, and `m
 
 Text-based types (`text`, `ascii`, `unicode`) store diagram content as plain text in fenced Markdown blocks (` ```textdiagram `) or AsciiDoc literal blocks (`[source,text]` + `----`). They render directly in native builds without external tools, are readable in Git diffs and terminals, and are validated with a 120-character line-length limit.
 
-`svgbob` uses the svgbob markup syntax in dedicated fenced/literal blocks. `mermaid` uses Mermaid syntax in dedicated fenced/literal blocks and requires an external renderer (mermaid-cli, asciidoctor-diagram, or Kroki) for image output.
+`svgbob` uses the svgbob markup syntax in dedicated fenced/literal blocks. `mermaid` uses Mermaid syntax in dedicated fenced/literal blocks and requires an external renderer (`mermaid-cli` or `asciidoctor-diagram`) for image output. Three diagram renderers are supported: `pass-through` (default, embeds source as-is), `mermaid-cli`, and `asciidoctor-diagram`.
 
 The Check Layer validates diagram type against the allowed set, verifies that the body contains the correct block syntax for the declared type and dialect, checks for empty blocks, and enforces line-length limits on text diagrams. Templates produce type-appropriate scaffolding when creating new diagram records.
 
@@ -875,7 +888,7 @@ Repair/recount operations can restore consistency without data loss.
 **Date:** 2026-05-22
 **Deciders:** archledger maintainers
 **Supersedes:**
-**Related:** al_0090
+**Related:** al_0082
 
 ## Context
 
@@ -887,7 +900,7 @@ Support five diagram types: `text`, `ascii`, `unicode`, `svgbob`, and `mermaid`.
 
 ## Consequences
 
-Text diagrams are immediately readable in source, Git diffs, terminal output, and native builds. Mermaid remains available for sequence/state/flow diagrams where its syntax is more compact. Text diagrams have a line-length limit to prevent unreadable horizontal scrolling. The diagram type is stored in the record metadata and can be overridden per-record via `--diagram-type` on the CLI.
+Text diagrams are immediately readable in source, Git diffs, terminal output, and native builds. Mermaid remains available for sequence/state/flow diagrams where its syntax is more compact. Text diagrams have a line-length limit to prevent unreadable horizontal scrolling. The diagram type is stored in the record metadata and can be overridden per-record via `--diagram-type` on the CLI. Three renderers are supported (`pass-through`, `mermaid-cli`, `asciidoctor-diagram`), down from an earlier broader set; svgbob, goat, and Kroki renderers were removed to reduce external dependency surface.
 
 ## Alternatives considered
 
@@ -903,12 +916,12 @@ The top quality scenarios address deterministic builds and agent-friendly CLI in
 
 | Title                                      | Category      | Measure                                                                         | Scenarios        |
 | ------------------------------------------ | ------------- | ------------------------------------------------------------------------------- | ---------------- |
-| Deterministic native build output          | reliability   | Byte-identical output for equal accepted records and deterministic date source. | al_0061, al_0066 |
-| Fast check and build on small repositories | performance   | check/build complete in under 5s on representative small repositories.          | al_0066          |
-| Safe path validation                       | safety        | Path escape attempts are rejected with explicit errors.                         | al_0064          |
-| Clear converter failure diagnostics        | operability   | Converter failures identify missing tool and installation hint.                 | al_0062          |
-| JSON output stability                      | compatibility | JSON payload keys for stable commands remain backward compatible.               | al_0065          |
-| Source tracking correctness                | correctness   | Source tracking reports file and impact deltas accurately.                      | al_0063          |
+| Deterministic native build output          | reliability   | Byte-identical output for equal accepted records and deterministic date source. | al_0093, al_0101 |
+| Fast check and build on small repositories | performance   | check/build complete in under 5s on representative small repositories.          | al_0101          |
+| Safe path validation                       | safety        | Path escape attempts are rejected with explicit errors.                         | al_0099          |
+| Clear converter failure diagnostics        | operability   | Converter failures identify missing tool and installation hint.                 | al_0095          |
+| JSON output stability                      | compatibility | JSON payload keys for stable commands remain backward compatible.               | al_0100          |
+| Source tracking correctness                | correctness   | Source tracking reports file and impact deltas accurately.                      | al_0097          |
 
 ## Quality Scenarios
 
@@ -925,14 +938,14 @@ The top quality scenarios address deterministic builds and agent-friendly CLI in
 
 # Risks and Technical Debt
 
-Primary risks: documentation can drift from implementation (mitigated by source tracking, CI check integration, and `source_refs` on records), ledger numbering inconsistencies after manual deletion or stale counters (mitigated by `archledger archive` and `archledger doctor --repair`), and dependency on external converters (pandoc, asciidoctor) for non-native export formats which may not be available in all environments.
+Primary risks: documentation can drift from implementation (mitigated by source tracking, CI check integration, and `source_refs` on records), counter collisions when the storage metadata becomes stale (mitigated by the --repair-counters flag), and dependency on external converters (pandoc, asciidoctor) for non-native export formats which may not be available in all environments.
 
 ## Risk Overview
 
 | Title                                                                | Severity | Probability | Mitigation                                                                                                                                                                                                                           | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | -------------------------------------------------------------------- | -------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Documentation drifts from implementation                             | medium   | medium      | Run archledger check in CI to detect stale or placeholder records. Use source tracking (snapshot/changed) to detect impacted records. Encourage agents to update records when modifying code and to maintain source_refs on records. | Architecture records describe the system at a point in time. As the codebase evolves, records may become stale or inaccurate. The `check` command detects placeholder text and missing fields, but cannot detect semantic drift. The source tracking subsystem (`snapshot`/`changed`) with `source_refs` on records provides file-level change-to-record linkage, enabling agents to identify which documentation needs updating when code changes. |
-| Counter collisions on rapid record creation                          | medium   | medium      | Use `archledger archive` instead of deleting numbered fragments and run `archledger doctor --repair` to recreate tombstones/sections and recompute `storage.yaml.next_number` without renumbering.                                   | The storage metadata file tracks the next ledger number. If records are manually deleted or metadata becomes stale, numbering can drift. `doctor --repair` restores structural integrity and preserves ledger history while keeping IDs stable.                                                                                                                                                                                                     |
+| Counter collisions on rapid record creation                          | medium   | medium      | Use archledger archive instead of deleting numbered fragments, and run archledger doctor --repair to restore missing IDs as tombstones and recompute storage.yaml next_number.                                                       | The storage metadata file tracks the next ledger number. If metadata becomes stale or numbered fragments are manually deleted, new records can collide with existing history. `archledger doctor --repair` recomputes `storage.yaml.next_number` and creates archive tombstones for missing non-section IDs so numbering stays gapless without renumbering existing records.                                                                        |
 | External converter tools unavailable in CI or developer environments | medium   | low         | Native builds (Markdown-to-Markdown, AsciiDoc-to-AsciiDoc) require no external tools. Non-native formats fail gracefully with clear install instructions. CI can pre-install pandoc and asciidoctor gems.                            | The converter layer depends on external tools (pandoc, asciidoctor, asciidoctor-pdf) for non-native output formats. These tools may not be available in all environments. When a tool is missing, the build fails with a clear error message and installation instructions. Native builds always work without external dependencies.                                                                                                                |
 
 # Glossary
