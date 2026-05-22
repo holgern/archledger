@@ -167,7 +167,7 @@ def _glossary_term_context(input_data: RecordContextInput) -> dict[str, object]:
 def _diagram_context(input_data: RecordContextInput) -> dict[str, object]:
     caption = _string_kwarg(input_data.kwargs, "caption", "")
     return {
-        "diagram_type": _string_kwarg(input_data.kwargs, "diagram_type", "mermaid"),
+        "diagram_type": _string_kwarg(input_data.kwargs, "diagram_type", "text"),
         "caption": caption if caption else input_data.title,
         "related_records": _string_sequence_kwarg(input_data.kwargs, "related_records"),
     }

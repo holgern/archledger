@@ -1,7 +1,7 @@
 ---
 title: "archledger Architecture Documentation"
 date: "1980-01-01"
-generator: "archledger 0.1.dev17+gab9b1ef7e.d19800101"
+generator: "archledger 0.1.dev19+g3fc619560.d19800101"
 arc42_template_version: "9.0-EN"
 ---
 
@@ -90,35 +90,28 @@ See the [System Context diagram](#diagram-diagram_0001) for a visual overview of
 
 archledger operates as a local CLI tool. External actors interact through shell invocations. Optional converter tools (pandoc, asciidoctor) are invoked as subprocesses for non-native export formats.
 
-```mermaid
-graph TB
-    Developer["fa:fa-user Developer"]
-    Agent["fa:fa-robot Coding Agent"]
-    CI["fa:fa-server CI Pipeline"]
-
-    CLI["archledger CLI\n(Typer entrypoint)"]
-
-    Workspace["Project Workspace\n.archledger/ records/"]
-    Output["Build Output\nARCHITECTURE.md / exports"]
-
-    Pandoc["pandoc\n(optional)"]
-    Asciidoctor["asciidoctor / asciidoctor-pdf\n(optional)"]
-
-    Developer -->|"CLI invocation"| CLI
-    Agent -->|"CLI --json"| CLI
-    CI -->|"exit codes + artifacts"| CLI
-
-    CLI -->|"read config & records"| Workspace
-    CLI -->|"write assembled doc"| Output
-
-    CLI -->|"subprocess"| Pandoc
-    CLI -->|"subprocess"| Asciidoctor
-
-    style CLI fill:#4a9eff,color:#fff
-    style Workspace fill:#e8f4fd
-    style Output fill:#e8f4fd
-    style Pandoc fill:#f0f0f0,stroke-dasharray: 5 5
-    style Asciidoctor fill:#f0f0f0,stroke-dasharray: 5 5
+```textdiagram
+┌───────────┐  ┌──────────────┐  ┌──────────────┐
+│ Developer │  │ Coding Agent │  │ CI Pipeline  │
+└─────┬─────┘  └──────┬───────┘  └──────┬───────┘
+      │               │                 │
+      └───────────────┼─────────────────┘
+                      ▼
+           ┌─────────────────────┐
+           │   archledger CLI    │
+           │  (Typer entrypoint) │
+           └─────┬─────────┬─────┘
+                 │         │
+      ┌──────────▼───┐ ┌───▼──────────────┐
+      │  Workspace   │ │  Build Output    │
+      │ .archledger/ │ │ ARCHITECTURE.md  │
+      │  records/    │ │  + exports       │
+      └──────────────┘ └───┬──────────┬────┘
+                             │          │
+                      ┌──────▼───┐ ┌───▼───────────┐
+                      │  pandoc  │ │ asciidoctor   │
+                      │ optional │ │   optional    │
+                      └──────────┘ └──────────────┘
 ```
 
 **Caption:** archledger system context showing external actors and adjacent systems
@@ -170,82 +163,43 @@ See the [Building Block Layer Structure diagram](#diagram-diagram_0002) for a vi
 
 ## Building Block Layer Structure
 
-The system is organized as a layered pipeline. User input flows down from the CLI through business logic to storage. Rendering flows upward from storage through assembly to the build output.
+The system is organized as a layered pipeline. User input flows down from the
+CLI through business logic to storage. Rendering flows upward from storage
+through assembly to the build output.
 
-```mermaid
-graph TB
-    subgraph "Interface Layer"
-        CLI["CLI Layer\ncli.py, cli_formatting.py,\ncli_payloads.py, launcher.py"]
-    end
-
-    subgraph "Business Logic Layer"
-        Repo["Repository Layer\nrepository.py"]
-        Model["Model Layer\nmodel.py, errors.py"]
-        Registry["Record Type Registry\nrecord_types.py"]
-        Checks["Check Layer\nchecks.py"]
-        SrcRefs["Source Ref Validation\nsource_refs.py"]
-    end
-
-    subgraph "Configuration Layer"
-        Config["Config Layer\nconfig/"]
-    end
-
-    subgraph "Rendering Layer"
-        Render["Render Layer\nrender.py"]
-        Assembly["Assembly Layer\nassembly.py"]
-        Dialect["Dialect Layer\ndialects.py"]
-        SectionR["Section Rendering Layer\nsection_rendering.py"]
-    end
-
-    subgraph "Export Layer"
-        Converter["Converter Layer\nconverters.py,\nconversion_plan.py, formats.py"]
-        Migration["Migration Layer\nmigration.py"]
-    end
-
-    subgraph "Infrastructure Layer"
-        Storage["Storage Layer\nstorage/"]
-        Tracking["Source Tracking Layer\nsource_tracking.py,\nstorage/source_state.py"]
-    end
-
-    CLI --> Repo
-    CLI --> Config
-    Repo --> Model
-    Repo --> Registry
-    Repo --> Checks
-    Repo --> SrcRefs
-    Repo --> Storage
-
-    Render --> Assembly
-    Assembly --> Dialect
-    Assembly --> SectionR
-    Assembly --> Storage
-
-    Render --> Converter
-    Converter --> Storage
-
-    CLI --> Tracking
-    Tracking --> Storage
-
-    Config --> Storage
-
-    style CLI fill:#4a9eff,color:#fff
-    style Repo fill:#6c5ce7,color:#fff
-    style Model fill:#6c5ce7,color:#fff
-    style Registry fill:#6c5ce7,color:#fff
-    style Checks fill:#6c5ce7,color:#fff
-    style SrcRefs fill:#6c5ce7,color:#fff
-    style Config fill:#fdcb6e
-    style Render fill:#00b894,color:#fff
-    style Assembly fill:#00b894,color:#fff
-    style Dialect fill:#00b894,color:#fff
-    style SectionR fill:#00b894,color:#fff
-    style Converter fill:#e17055,color:#fff
-    style Migration fill:#e17055,color:#fff
-    style Storage fill:#dfe6e9
-    style Tracking fill:#dfe6e9
+```textdiagram
+┌─ Interface ──────────────────────────────────────────────────┐
+│  CLI Layer  (cli.py, cli_formatting.py, cli_payloads.py)    │
+└────────────────────────────┬─────────────────────────────────┘
+                             ▼
+┌─ Business Logic ────────────────────────────────────────────┐
+│  Repository (repo.py)        Model (model.py)               │
+│  Record Types (rec_types)    Checks (checks.py)             │
+│  Source Refs (source_refs.py)                               │
+└────────────────────────────┬─────────────────────────────────┘
+                             ▼
+┌─ Configuration ────────────────────────────────────────────┐
+│  Config Layer (config/)                                    │
+└────────────────────────────┬─────────────────────────────────┘
+                             ▼
+┌─ Rendering ────────────────────────────────────────────────┐
+│  Render (render.py)       Assembly (assembly.py)           │
+│  Dialect (dialects.py)    Section Rendering                │
+│                           (section_rendering.py)            │
+└────────────────────────────┬─────────────────────────────────┘
+                             ▼
+┌─ Export ───────────────────────────────────────────────────┐
+│  Converter (converters, conversion_plan, formats)          │
+│  Migration (migration.py)                                  │
+└────────────────────────────┬─────────────────────────────────┘
+                             ▼
+┌─ Infrastructure ───────────────────────────────────────────┐
+│  Storage (storage/)         Source Tracking                 │
+│                             (source_tracking.py)            │
+└────────────────────────────────────────────────────────────┘
 ```
 
-**Caption:** Layered decomposition of archledger into fifteen black boxes
+**Caption:** Layered decomposition of archledger building blocks
 
 ## Whitebox Overall System
 
@@ -260,7 +214,7 @@ archledger is decomposed into fifteen black boxes organized as a layered pipelin
 - **Repository Layer** (`repository.py`): Business logic orchestration for init, create, list, check, status
 - **Model Layer** (`model.py`, `errors.py`): Core data structures, validation constants, record lifecycle
 - **Record Type Registry** (`record_types.py`): Record type specifications, directory/template/section mappings, CLI kind aliases
-- **Check Layer** (`checks.py`): Per-record-type content validation and warning generation
+- **Check Layer** (`checks.py`): Per-record-type content validation including multi-type diagram validation (text/ascii/unicode/svgbob/mermaid) with dialect-specific block detection and line-length checks
 - **Source Ref Validation** (`source_refs.py`): Traceability link normalization and path validation
 - **Storage Layer** (`storage/`): File system access, front matter parsing, source state persistence
 - **Assembly Layer** (`assembly.py`): Jinja2-based document assembly from records and sections
@@ -381,13 +335,19 @@ The migration module converts source fragments from one dialect to another. Curr
 
 The `config` subpackage owns all project configuration concerns. `config/model.py` defines frozen dataclasses for each configuration domain: `SourceConfig`, `BuildConfig` (with nested `BuildOutputConfig`), `Arc42Config`, `SkillConfig`, `TrackingConfig`, and the unified `ProjectConfig` facade that composes them via properties. `config/parse.py` loads and validates `archledger.toml` using `tomllib` (or `tomli` for Python < 3.11), with strict key validation and environment variable expansion. `config/render.py` generates default configuration files for `archledger init`. The subpackage re-exports key types from `__init__.py`.
 
+The `[diagrams]` section supports five diagram types (`text`, `ascii`, `unicode`, `svgbob`, `mermaid`) and six renderers (`pass-through`, `mermaid-cli`, `svgbob`, `goat`, `asciidoctor-diagram`, `kroki`). The default diagram type is `text`, ensuring that new diagram records produce readable text-based diagrams in native builds without any external tooling.
+
 #### Record Type Registry
 
 **Parent:** white_box_0001
 **Interfaces:** RECORD_TYPES registry, CLI_KIND_ALIASES, RecordTypeSpec dataclass
 **Location:** archledger/record_types.py
 
-The `record_types.py` module is the central registry for all arc42 record types. It defines `RecordTypeSpec`, a frozen dataclass mapping each record kind to its directory name, filename prefix, default section, template basename, CLI aliases, default status/level, and a context factory function. The `RECORD_TYPES` dictionary provides the authoritative lookup. `CLI_KIND_ALIASES` maps alternative names (e.g., `qg` for `quality_goal`) for the CLI. This module was extracted from `model.py` to keep the model focused on data structures while record type configuration lives in one discoverable location.
+The `record_types.py` module is the central registry for all arc42 record types. It defines `RecordTypeSpec`, a frozen dataclass mapping each record kind to its directory name, filename prefix, default section, template basename, CLI aliases, default status/level, and a context factory function. The `RECORD_TYPES` dictionary provides the authoritative lookup. `CLI_KIND_ALIASES` maps alternative names (e.g., `qg` for `quality_goal`) for the CLI.
+
+The diagram context factory defaults `diagram_type` to `"text"` (previously `"mermaid"`). Supported diagram types are `text`, `ascii`, `unicode`, `svgbob`, and `mermaid`. The default can be overridden per-project via the `[diagrams].default_type` config key, which the Repository Layer passes through when creating diagram records.
+
+This module was extracted from `model.py` to keep the model focused on data structures while record type configuration lives in one discoverable location.
 
 #### Check Layer
 
@@ -395,7 +355,11 @@ The `record_types.py` module is the central registry for all arc42 record types.
 **Interfaces:** content_warnings()
 **Location:** archledger/checks.py
 
-The `checks.py` module provides per-record-type content validation beyond structural checks. The main entry point is `content_warnings()`, which returns a list of warning strings for a given `ArchitectureRecord`. It dispatches to type-specific checkers registered in `_CONTENT_WARNING_CHECKERS`: quality goals require scenarios, stakeholders require expectations, constraints require impact and valid categories, ADRs require Context/Decision/Consequences sections and deciders, quality scenarios require measurable response measures, risks require valid severity/probability and mitigation, and so on. It also detects placeholder text in record bodies and cross-dialect syntax contamination (e.g., AsciiDoc headings in Markdown records). This module was extracted from `repository.py` to isolate validation logic.
+The `checks.py` module provides per-record-type content validation beyond structural checks. The main entry point is `content_warnings()`, which returns a list of warning strings for a given `ArchitectureRecord`. It dispatches to type-specific checkers registered in `_CONTENT_WARNING_CHECKERS`: quality goals require scenarios, stakeholders require expectations, constraints require impact and valid categories, ADRs require Context/Decision/Consequences sections and deciders, quality scenarios require measurable response measures, risks require valid severity/probability and mitigation, and so on. It also detects placeholder text in record bodies and cross-dialect syntax contamination (e.g., AsciiDoc headings in Markdown records).
+
+For diagram records, the check layer validates the `diagram_type` field against the allowed set (`text`, `ascii`, `unicode`, `svgbob`, `mermaid`), verifies that the body contains the appropriate fenced or literal block for the declared type and source dialect (Markdown uses ` ```textdiagram `/` ```svgbob `/` ```mermaid ` fences; AsciiDoc uses `[source,text]`+`----`, `[svgbob]`+`....`, or `[mermaid]`+`....` blocks), and checks for empty diagram blocks. Text-type diagrams (`text`, `ascii`, `unicode`) receive an additional line-length check (120 characters max) to keep diagrams readable in terminals and Git diffs.
+
+This module was extracted from `repository.py` to isolate validation logic.
 
 #### Source Ref Validation
 
@@ -413,59 +377,30 @@ See the [Build Pipeline Flow diagram](#diagram-diagram_0003) for a visual overvi
 
 ## Build Pipeline Flow
 
-The build pipeline processes architecture records through four stages. Native Markdown and AsciiDoc builds require no external tools. Non-native exports delegate to pandoc or asciidoctor.
+The build pipeline processes architecture records through four stages. Native
+Markdown and AsciiDoc builds require no external tools. Non-native exports
+delegate to pandoc or asciidoctor.
 
-```mermaid
-flowchart LR
-    subgraph "1. Author"
-        A1["Create / edit\nrecord files"]
-    end
-
-    subgraph "2. Validate"
-        V1["Parse front matter"]
-        V2["Check schema"]
-        V3["Check cross-refs"]
-        V4["Type-specific checks"]
-        V1 --> V2 --> V3 --> V4
-    end
-
-    subgraph "3. Assemble"
-        R1["Load records & sections"]
-        R2["Resolve dialect"]
-        R3["Render Jinja2 template"]
-        R4["Write native document"]
-        R1 --> R2 --> R3 --> R4
-    end
-
-    subgraph "4. Export"
-        E1["Plan conversion"]
-        E2{"Native format?"}
-        E3["Copy file"]
-        E4["Invoke pandoc / asciidoctor"]
-        E5["Report results"]
-        E1 --> E2
-        E2 -->|yes| E3 --> E5
-        E2 -->|no| E4 --> E5
-    end
-
-    A1 -->|"archledger new"| V1
-    V4 -->|"archledger check"| R1
-    R4 -->|"archledger build"| E1
-
-    style A1 fill:#4a9eff,color:#fff
-    style V1 fill:#6c5ce7,color:#fff
-    style V2 fill:#6c5ce7,color:#fff
-    style V3 fill:#6c5ce7,color:#fff
-    style V4 fill:#6c5ce7,color:#fff
-    style R1 fill:#00b894,color:#fff
-    style R2 fill:#00b894,color:#fff
-    style R3 fill:#00b894,color:#fff
-    style R4 fill:#00b894,color:#fff
-    style E1 fill:#e17055,color:#fff
-    style E2 fill:#e17055,color:#fff
-    style E3 fill:#e17055,color:#fff
-    style E4 fill:#e17055,color:#fff
-    style E5 fill:#e17055,color:#fff
+```textdiagram
+┌──────────┐      ┌───────────┐      ┌────────────┐      ┌──────────┐
+│  Author  │─────>│ Validate  │─────>│  Assemble  │─────>│  Export  │
+├──────────┤      ├───────────┤      ├────────────┤      ├──────────┤
+│          │      │ Parse     │      │ Load recs  │      │ Plan     │
+│ Create / │      │ front     │      │ & sections │      │ conver-  │
+│ edit     │      │ matter    │      │            │      │ sion     │
+│ record   │      │           │      │ Resolve    │      │          │
+│ files    │      │ Check     │      │ dialect    │      │ Native?  │
+│          │      │ schema +  │      │            │      │  yes:    │
+│          │      │ cross-    │      │ Render     │      │   copy   │
+│          │      │ refs      │      │ Jinja2     │      │  no:     │
+│          │      │           │      │ template   │      │   pandoc │
+│          │      │ Type-     │      │            │      │   or     │
+│          │      │ specific  │      │ Write      │      │   asc-   │
+│          │      │ checks    │      │ native doc │      │   iido-  │
+│          │      │           │      │            │      │   ctor   │
+└──────────┘      └───────────┘      └────────────┘      └──────────┘
+    new              check             build              build
+                                      --format            --format
 ```
 
 **Caption:** The four-stage pipeline from authoring to export
@@ -533,50 +468,39 @@ See the [Deployment Topology diagram](#diagram-diagram_0004) for a visual overvi
 
 ## Deployment Topology
 
-archledger has no server component. It runs as a local CLI tool on developer machines and in CI runners. The storage directory is co-located with the source repository.
+archledger has no server component. It runs as a local CLI tool on developer
+machines and in CI runners. The storage directory is co-located with the source
+repository.
 
-```mermaid
-graph TB
-    subgraph "Developer Machine"
-        DevEnv["Python 3.10+\nvenv / system"]
-        DevCLI["archledger CLI\n(console script)"]
-        DevWorkspace["Project Workspace\n.archledger/ + source/"]
-        DevOutput["Build Output\nARCHITECTURE.md"]
-        DevConverters["Optional Tools\npandoc, asciidoctor"]
+```textdiagram
+┌─ Developer Machine ───────────────────────────────────────────┐
+│                                                               │
+│  Python 3.10+ (venv / system)                                 │
+│       │                                                       │
+│  ┌────▼───────────┐   ┌──────────────┐  ┌──────────────────┐ │
+│  │ archledger CLI │──>│  Workspace   │  │  Build Output    │ │
+│  │ (console       │   │ .archledger/ │  │ ARCHITECTURE.md  │ │
+│  │  script)       │   │  + source/   │  │  + exports       │ │
+│  └────────────────┘   └──────────────┘  └──────────────────┘ │
+│       │ optional                                              │
+│  ┌────▼────────────────┐                                     │
+│  │ pandoc / asciidoctor│                                     │
+│  └─────────────────────┘                                     │
+└───────────────────────────────────────────────────────────────┘
 
-        DevCLI --> DevWorkspace
-        DevCLI --> DevOutput
-        DevCLI -.->|"optional"| DevConverters
-    end
+┌─ CI Runner ──────────────────────────────────────────────────┐
+│  Python 3.10+ ──> archledger CLI ──> Build Artifacts        │
+└────────────────────────────────┬─────────────────────────────┘
+                                 │ publish
+                                 ▼
+                          ┌──────────────┐
+                          │ Docs Hosting │
+                          └──────────────┘
 
-    subgraph "CI Runner"
-        CIPython["Python 3.10+"]
-        CICLI["archledger CLI"]
-        CIWorkspace["Checkout\n.archledger/ + source/"]
-        CIArtifact["Build Artifacts"]
-
-        CICLI --> CIWorkspace
-        CICLI --> CIArtifact
-    end
-
-    subgraph "PyPI"
-        PyPI["archledger wheel"]
-    end
-
-    PyPI -->|"pip install"| DevEnv
-    PyPI -->|"pip install"| CIPython
-
-    DevEnv --> DevCLI
-    CIPython --> CICLI
-
-    DevWorkspace -->|"git push"| CIWorkspace
-    CIArtifact -->|"publish"| Docs["Docs Hosting"]
-
-    style DevCLI fill:#4a9eff,color:#fff
-    style CICLI fill:#4a9eff,color:#fff
-    style PyPI fill:#fdcb6e
-    style DevConverters fill:#f0f0f0,stroke-dasharray: 5 5
-    style Docs fill:#00b894,color:#fff
+┌─ PyPI ──────────────┐
+│ archledger wheel    │── pip install ──> Developer Machine
+│                     │── pip install ──> CI Runner
+└─────────────────────┘
 ```
 
 **Caption:** archledger deployment nodes and their relationships
@@ -611,7 +535,7 @@ CI release validation runs unit tests, package build checks, version consistency
 
 # Cross-cutting Concepts
 
-Three cross-cutting concepts pervade the architecture: the record lifecycle (draft, proposed, accepted, deprecated, superseded) which controls visibility and validation behavior, the config discovery mechanism which resolves project paths from the workspace directory upward, and the dialect abstraction which ensures format-neutral rendering for both Markdown and AsciiDoc sources.
+Four cross-cutting concepts pervade the architecture: the record lifecycle (draft, proposed, accepted, deprecated, superseded) which controls visibility and validation behavior, the config discovery mechanism which resolves project paths from the workspace directory upward, the dialect abstraction which ensures format-neutral rendering for both Markdown and AsciiDoc sources, and the multi-type diagram record system which supports text, ascii, unicode, svgbob, and mermaid diagram types with type-appropriate validation and templating.
 
 A fourth cross-cutting concern is source tracking and change impact analysis, which is visualized in the [Source Tracking Flow diagram](#diagram-diagram_0005).
 
@@ -671,9 +595,21 @@ Config parsing is handled by the Config Layer (`config/` subpackage): `config/pa
 
 archledger supports both Markdown and AsciiDoc as first-class source formats. The dialect abstraction (`dialects.py`) defines a `Dialect` base class with methods for headings, tables, bullets, and strong text. `MarkdownDialect` and `AsciiDocDialect` implement these using their respective markup conventions. All rendering code in the Section Rendering Layer and Assembly Layer uses dialects rather than hardcoded markup, ensuring that a single rendering codebase produces correct output for both source formats. Templates exist in both `.md.j2` and `.adoc.j2` variants.
 
+For diagram records, the dialect determines the block syntax used in both templates and validation: Markdown diagrams use fenced code blocks (` ```textdiagram `, ` ```svgbob `, ` ```mermaid `), while AsciiDoc diagrams use literal or source blocks (`[source,text]`+`----`, `[svgbob]`+`....`, `[mermaid]`+`....`). Text-based diagram types (`text`, `ascii`, `unicode`) use the same fenced/literal block syntax within each dialect, differing only in the content characters used.
+
 ## Source tracking and change impact analysis
 
 The source tracking subsystem allows agents to detect which workspace files changed since the last baseline snapshot and which architecture records are impacted. A snapshot (`archledger source snapshot`) records SHA-256 hashes of all tracked files. The `source changed` command computes the diff between the baseline and current state, then cross-references changed files with record `source_refs` to identify impacted records and sections. Files that changed but have no linked records are reported as unlinked. This enables agents to update only the documentation affected by code changes.
+
+## Multi-type diagram records
+
+Diagram records support five types: `text`, `ascii`, `unicode`, `svgbob`, and `mermaid`. The default type is `text`, configured via `[diagrams].default_type` in `archledger.toml` and overridable per-record with `--diagram-type` on the CLI.
+
+Text-based types (`text`, `ascii`, `unicode`) store diagram content as plain text in fenced Markdown blocks (` ```textdiagram `) or AsciiDoc literal blocks (`[source,text]` + `----`). They render directly in native builds without external tools, are readable in Git diffs and terminals, and are validated with a 120-character line-length limit.
+
+`svgbob` uses the svgbob markup syntax in dedicated fenced/literal blocks. `mermaid` uses Mermaid syntax in dedicated fenced/literal blocks and requires an external renderer (mermaid-cli, asciidoctor-diagram, or Kroki) for image output.
+
+The Check Layer validates diagram type against the allowed set, verifies that the body contains the correct block syntax for the declared type and dialect, checks for empty blocks, and enforces line-length limits on text diagrams. Templates produce type-appropriate scaffolding when creating new diagram records.
 
 # Architecture Decisions
 
@@ -932,6 +868,32 @@ Repair/recount operations can restore consistency without data loss.
 ## Alternatives considered
 
 - Keep legacy behavior unchanged: rejected because it leaves release-critical ambiguity.
+
+## Multi-type diagram support with text as default
+
+**Status:** accepted
+**Date:** 2026-05-22
+**Deciders:** archledger maintainers
+**Supersedes:**
+**Related:** adr0006
+
+## Context
+
+The initial diagram support only handled Mermaid syntax. Mermaid requires a renderer (mermaid-cli, browser, or Kroki) to produce visual output, and its source blocks are not directly readable in terminals or plain-text diff views. Architecture diagrams are often structural decompositions that benefit more from being readable at a glance than from being interactive or visually polished.
+
+## Decision
+
+Support five diagram types: `text`, `ascii`, `unicode`, `svgbob`, and `mermaid`. Default to `text` for new diagram records. Text-based diagrams (`text`, `ascii`, `unicode`) use simple fenced/literal blocks that render directly in Markdown and AsciiDoc builds without any external tool. The Check Layer validates each diagram type with dialect-appropriate block detection and enforces a 120-character line-length limit on text diagrams. Templates produce type-appropriate scaffolding.
+
+## Consequences
+
+Text diagrams are immediately readable in source, Git diffs, terminal output, and native builds. Mermaid remains available for sequence/state/flow diagrams where its syntax is more compact. Text diagrams have a line-length limit to prevent unreadable horizontal scrolling. The diagram type is stored in the record metadata and can be overridden per-record via `--diagram-type` on the CLI.
+
+## Alternatives considered
+
+- Keep Mermaid as sole diagram type: rejected because it prevents readable text-based diagrams that work without a renderer.
+- Support only text diagrams: rejected because Mermaid is better suited for certain diagram categories (sequence, state).
+- Make `unicode` the default: rejected because `text` has broader terminal and font compatibility.
 
 # Quality Requirements
 

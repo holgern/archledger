@@ -379,6 +379,8 @@ class ArchitectureRepository:
         status = kwargs.get("status", spec.default_status)
         section = kwargs.get("section") or RECORD_TYPE_TO_DEFAULT_SECTION[kind]
         parent = kwargs.get("parent")
+        if kind == "diagram" and not kwargs.get("diagram_type"):
+            kwargs = {**kwargs, "diagram_type": self.config.diagram_default_type}
         context: dict[str, object] = {
             "schema_version": self.config.source_schema_version,
             "id": target_path.stem,

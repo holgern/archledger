@@ -72,7 +72,7 @@ def render_default_config(
             "[diagrams]",
             "enabled = false",
             'renderer = "pass-through"',
-            'default_type = "mermaid"',
+            'default_type = "text"',
             'output_dir = "diagrams"',
             'image_format = "svg"',
             'kroki_url = ""',

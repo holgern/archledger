@@ -544,6 +544,8 @@ def test_mermaid_cli_invoked_only_when_diagram_rendering_enabled(
             "accepted",
             "--section",
             "runtime_view",
+            "--diagram-type",
+            "mermaid",
         ],
     )
     config_path = tmp_path / "archledger.toml"

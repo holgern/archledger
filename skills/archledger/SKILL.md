@@ -124,13 +124,25 @@ Use diagram records for visual architecture views:
 
 ```bash
 archledger new diagram "Runtime login flow" --section runtime_view --status proposed
-archledger new diagram "Deployment topology" --section deployment_view --diagram-type mermaid
+archledger new diagram "Deployment topology" --section deployment_view
+archledger new diagram "Login sequence" --diagram-type mermaid
 ```
 
-Diagram syntax by source format:
+Diagram records default to `diagram_type = "text"`. Dense architecture decomposition
+diagrams should use `text` or `unicode` so they remain readable in source, Git diffs,
+terminal output, and native builds. Prefer Mermaid only for compact sequence, state,
+or flow diagrams.
 
-- Markdown: fenced ````mermaid` blocks
-- AsciiDoc: `[mermaid]` + `....` blocks
+Diagram syntax by source format and type:
+
+- Markdown text/ascii/unicode: fenced ` ```textdiagram ` blocks
+- Markdown svgbob: fenced ` ```svgbob ` blocks
+- Markdown mermaid: fenced ` ```mermaid ` blocks
+- AsciiDoc text/ascii/unicode: `[source,text]` + `----` blocks
+- AsciiDoc svgbob: `[svgbob]` + `....` blocks
+- AsciiDoc mermaid: `[mermaid]` + `....` blocks
+
+Supported `--diagram-type` values: `text` (default), `ascii`, `unicode`, `svgbob`, `mermaid`.
 
 Prefer sections:
 

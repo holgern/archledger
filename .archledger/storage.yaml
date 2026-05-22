@@ -14,8 +14,8 @@ next_numbers:
   interface: 1
   runtime: 6
   infrastructure: 8
-  concept: 5
-  adr: 11
+  concept: 6
+  adr: 12
   quality_requirement: 7
   quality_scenario: 9
   risk: 4

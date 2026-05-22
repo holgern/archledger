@@ -14,7 +14,7 @@ diagram: null
 quality_characteristics: []
 tags: []
 created_at: "2026-05-20T05:52:14Z"
-updated_at: "2026-05-21T16:00:00Z"
+updated_at: "2026-05-22T07:00:00Z"
 source_refs:
   - path: archledger/
     reason: All source code under the archledger package
@@ -31,7 +31,7 @@ archledger is decomposed into fifteen black boxes organized as a layered pipelin
 - **Repository Layer** (`repository.py`): Business logic orchestration for init, create, list, check, status
 - **Model Layer** (`model.py`, `errors.py`): Core data structures, validation constants, record lifecycle
 - **Record Type Registry** (`record_types.py`): Record type specifications, directory/template/section mappings, CLI kind aliases
-- **Check Layer** (`checks.py`): Per-record-type content validation and warning generation
+- **Check Layer** (`checks.py`): Per-record-type content validation including multi-type diagram validation (text/ascii/unicode/svgbob/mermaid) with dialect-specific block detection and line-length checks
 - **Source Ref Validation** (`source_refs.py`): Traceability link normalization and path validation
 - **Storage Layer** (`storage/`): File system access, front matter parsing, source state persistence
 - **Assembly Layer** (`assembly.py`): Jinja2-based document assembly from records and sections

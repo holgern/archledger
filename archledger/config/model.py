@@ -137,7 +137,7 @@ class ProjectConfig:
     tracking_hash_algorithm: str = "sha256"
     diagram_enabled: bool = False
     diagram_renderer: str = "pass-through"
-    diagram_default_type: str = "mermaid"
+    diagram_default_type: str = "text"
     diagram_output_dir: str = "diagrams"
     diagram_image_format: str = "svg"
     diagram_kroki_url: str = ""

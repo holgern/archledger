@@ -25,11 +25,19 @@ These export paths are supported when the external tools are installed and the
 corresponding integration checks pass. Native Markdown and AsciiDoc assembly
 remain the lowest-friction path because they do not depend on external converters.
 
-Mermaid diagrams
-----------------
+Diagram records
+---------------
 
-Diagram records can embed Mermaid blocks in Markdown or AsciiDoc source.
-Native builds keep these blocks as pass-through text.
+Diagram records are plain text by default. Dense architecture diagrams should use
+``diagram_type = "text"`` or ``"unicode"`` so they remain readable in source,
+Git diffs, terminal output, and native Markdown/AsciiDoc builds. Mermaid remains
+available for compact sequence or flow diagrams, but it is not the default.
+
+Supported ``diagram_type`` values: ``text`` (default), ``ascii``, ``unicode``,
+``svgbob``, ``mermaid``.
+
+Native builds preserve text diagram blocks as readable fenced code blocks or
+literal blocks — no external tool is required.
 
 Optional materialization for converter-backed outputs can be enabled with:
 
@@ -38,14 +46,15 @@ Optional materialization for converter-backed outputs can be enabled with:
    [diagrams]
    enabled = true
    renderer = "mermaid-cli"
+   default_type = "text"
    output_dir = "diagrams"
    image_format = "svg"
    kroki_url = ""
 
 Notes:
 
-- ``renderer = "pass-through"`` keeps diagram blocks unchanged.
-- ``renderer = "mermaid-cli"`` requires ``mmdc`` on ``PATH``.
+- ``renderer = "pass-through"`` keeps diagram blocks unchanged (default).
+- ``renderer = "mermaid-cli"`` requires ``mmdc`` on ``PATH`` and only processes Mermaid blocks.
 - ``renderer = "asciidoctor-diagram"`` is intended for direct Asciidoctor flows.
 - ``renderer = "kroki"`` requires an explicit ``kroki_url``.
 

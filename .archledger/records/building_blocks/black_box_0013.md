@@ -20,9 +20,17 @@ risks: []
 tags: []
 body_format: markdown
 created_at: "2026-05-21T11:31:25Z"
-updated_at: "2026-05-21T11:31:25Z"
+updated_at: "2026-05-22T07:00:00Z"
 source_refs:
   - archledger/record_types.py
+  - path: archledger/templates/records/diagram.md.j2
+    reason: "Diagram template scaffolding per diagram type"
+  - path: archledger/templates/records/diagram.adoc.j2
+    reason: "Diagram template scaffolding per diagram type"
 ---
 
-The `record_types.py` module is the central registry for all arc42 record types. It defines `RecordTypeSpec`, a frozen dataclass mapping each record kind to its directory name, filename prefix, default section, template basename, CLI aliases, default status/level, and a context factory function. The `RECORD_TYPES` dictionary provides the authoritative lookup. `CLI_KIND_ALIASES` maps alternative names (e.g., `qg` for `quality_goal`) for the CLI. This module was extracted from `model.py` to keep the model focused on data structures while record type configuration lives in one discoverable location.
+The `record_types.py` module is the central registry for all arc42 record types. It defines `RecordTypeSpec`, a frozen dataclass mapping each record kind to its directory name, filename prefix, default section, template basename, CLI aliases, default status/level, and a context factory function. The `RECORD_TYPES` dictionary provides the authoritative lookup. `CLI_KIND_ALIASES` maps alternative names (e.g., `qg` for `quality_goal`) for the CLI.
+
+The diagram context factory defaults `diagram_type` to `"text"` (previously `"mermaid"`). Supported diagram types are `text`, `ascii`, `unicode`, `svgbob`, and `mermaid`. The default can be overridden per-project via the `[diagrams].default_type` config key, which the Repository Layer passes through when creating diagram records.
+
+This module was extracted from `model.py` to keep the model focused on data structures while record type configuration lives in one discoverable location.

@@ -84,9 +84,9 @@ _ALLOWED_BUILD_CONVERTERS = frozenset({"auto", "pandoc", "asciidoctor"})
 _ALLOWED_TRACKING_SCANNERS = frozenset({"auto", "git", "filesystem"})
 _ALLOWED_TRACKING_HASH_ALGORITHMS = frozenset({"sha256"})
 _ALLOWED_DIAGRAM_RENDERERS = frozenset(
-    {"pass-through", "mermaid-cli", "asciidoctor-diagram", "kroki"}
+    {"pass-through", "mermaid-cli", "svgbob", "goat", "asciidoctor-diagram", "kroki"}
 )
-_ALLOWED_DIAGRAM_TYPES = frozenset({"mermaid"})
+_ALLOWED_DIAGRAM_TYPES = frozenset({"text", "ascii", "unicode", "svgbob", "mermaid"})
 _ALLOWED_DIAGRAM_IMAGE_FORMATS = frozenset({"svg", "png"})
 
 
@@ -518,7 +518,7 @@ def _parse_diagram_config(
         _ALLOWED_DIAGRAM_RENDERERS,
     )
     default_type = _require_choice(
-        effective_data.get("default_type", "mermaid"),
+        effective_data.get("default_type", "text"),
         "diagrams.default_type",
         _ALLOWED_DIAGRAM_TYPES,
     )

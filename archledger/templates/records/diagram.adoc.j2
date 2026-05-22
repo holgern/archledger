@@ -23,8 +23,24 @@ created_at: {{ created_at | tojson }}
 updated_at: {{ updated_at | tojson }}
 ---
 
+{% if diagram_type == "mermaid" %}
 [mermaid]
 ....
 flowchart LR
   A[Start] --> B[Describe architecture flow]
 ....
+{% elif diagram_type == "svgbob" %}
+[svgbob]
+....
++---------+     +----------+
+| Source  | --> | Output   |
++---------+     +----------+
+....
+{% else %}
+[source,text]
+----
+┌─────────┐     ┌──────────┐
+│ Source  │ ──> │ Output   │
+└─────────┘     └──────────┘
+----
+{% endif %}

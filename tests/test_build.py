@@ -206,7 +206,7 @@ def test_build_includes_diagram_records_in_runtime_view(tmp_path: Path) -> None:
     output = (tmp_path / "build" / "architecture.adoc").read_text(encoding="utf-8")
     assert "== Runtime View" in output
     assert "=== Runtime login flow" in output
-    assert "[mermaid]" in output
+    assert "[source,text]" in output
     assert "*Caption:* Runtime login flow" in output
 
 

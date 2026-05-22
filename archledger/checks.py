@@ -9,6 +9,49 @@ ALLOWED_CONSTRAINT_CATEGORIES = frozenset(
     {"technical", "organizational", "regulatory", "convention"}
 )
 ALLOWED_RISK_LEVELS = frozenset({"low", "medium", "high"})
+_ALLOWED_DIAGRAM_TYPES = frozenset({"text", "ascii", "unicode", "svgbob", "mermaid"})
+_TEXT_DIAGRAM_TYPES = frozenset({"text", "ascii", "unicode"})
+_MAX_TEXT_DIAGRAM_LINE_LENGTH = 120
+
+_MARKDOWN_BLOCK_PATTERNS: dict[str, re.Pattern[str]] = {
+    "mermaid": re.compile(r"```mermaid\s*\n(.*?)\n```", re.IGNORECASE | re.DOTALL),
+    "svgbob": re.compile(r"```svgbob\s*\n(.*?)\n```", re.IGNORECASE | re.DOTALL),
+    "text": re.compile(
+        r"```(?:textdiagram|diagram|text)\s*\n(.*?)\n```", re.IGNORECASE | re.DOTALL
+    ),
+    "ascii": re.compile(
+        r"```(?:textdiagram|diagram|ascii|text)\s*\n(.*?)\n```",
+        re.IGNORECASE | re.DOTALL,
+    ),
+    "unicode": re.compile(
+        r"```(?:textdiagram|diagram|text)\s*\n(.*?)\n```", re.IGNORECASE | re.DOTALL
+    ),
+}
+_ASCIIDOC_BLOCK_PATTERNS: dict[str, re.Pattern[str]] = {
+    "mermaid": re.compile(
+        r"\[mermaid\]\s*\n\.\.\.\.\s*\n(.*?)\n\.\.\.\.",
+        re.IGNORECASE | re.DOTALL,
+    ),
+    "svgbob": re.compile(
+        r"\[svgbob\]\s*\n\.\.\.\.\s*\n(.*?)\n\.\.\.\.",
+        re.IGNORECASE | re.DOTALL,
+    ),
+    "text": re.compile(
+        r"(?:\[source,\s*text\]|\[listing\])\s*\n----\s*\n(.*?)\n----"
+        r"|^\.\.\.\.\s*\n(.*?)\n\.\.\.\.",
+        re.IGNORECASE | re.DOTALL | re.MULTILINE,
+    ),
+    "ascii": re.compile(
+        r"(?:\[source,\s*(?:text|ascii)\]|\[listing\])\s*\n----\s*\n(.*?)\n----"
+        r"|^\.\.\.\.\s*\n(.*?)\n\.\.\.\.",
+        re.IGNORECASE | re.DOTALL | re.MULTILINE,
+    ),
+    "unicode": re.compile(
+        r"(?:\[source,\s*text\]|\[listing\])\s*\n----\s*\n(.*?)\n----"
+        r"|^\.\.\.\.\s*\n(.*?)\n\.\.\.\.",
+        re.IGNORECASE | re.DOTALL | re.MULTILINE,
+    ),
+}
 
 
 def content_warnings(record: ArchitectureRecord) -> list[str]:
@@ -202,10 +245,14 @@ def _glossary_term_warnings(record: ArchitectureRecord) -> list[str]:
 
 def _diagram_warnings(record: ArchitectureRecord) -> list[str]:
     warnings: list[str] = []
-    diagram_type = record.metadata.get("diagram_type")
-    if not isinstance(diagram_type, str) or diagram_type.strip().lower() != "mermaid":
+    diagram_type_raw = record.metadata.get("diagram_type")
+    diagram_type = (
+        diagram_type_raw.strip().lower() if isinstance(diagram_type_raw, str) else ""
+    )
+    if diagram_type not in _ALLOWED_DIAGRAM_TYPES:
         warnings.append(
-            f"Diagram {record.id} has unsupported diagram_type: {diagram_type}"
+            f"Diagram {record.id} has unsupported diagram_type: {diagram_type_raw!r}. "
+            f"Allowed types: {', '.join(sorted(_ALLOWED_DIAGRAM_TYPES))}."
         )
     caption = record.metadata.get("caption")
     if not isinstance(caption, str) or not caption.strip():
@@ -216,37 +263,85 @@ def _diagram_warnings(record: ArchitectureRecord) -> list[str]:
         body_format_value.strip().lower() if isinstance(body_format_value, str) else ""
     )
     if body_format == "markdown":
-        if not _has_markdown_mermaid_block(record.body):
-            warnings.append(
-                f"Diagram {record.id} markdown body is missing a fenced mermaid block."
-            )
-        elif _markdown_mermaid_block_is_empty(record.body):
-            warnings.append(f"Diagram {record.id} markdown mermaid block is empty.")
+        warnings.extend(_markdown_diagram_warnings(record, diagram_type))
     elif body_format == "asciidoc":
+        warnings.extend(_asciidoc_diagram_warnings(record, diagram_type))
+    return warnings
+
+
+def _markdown_diagram_warnings(
+    record: ArchitectureRecord, diagram_type: str
+) -> list[str]:
+    warnings: list[str] = []
+    pattern = _MARKDOWN_BLOCK_PATTERNS.get(diagram_type)
+    if pattern is None:
+        return warnings
+    match = pattern.search(record.body)
+    if not match:
+        warnings.append(
+            f"Diagram {record.id} markdown body is missing a fenced "
+            f"{diagram_type} block."
+        )
+    else:
+        block_content = match.group(1) or ""
+        if not block_content.strip():
+            warnings.append(f"Diagram {record.id} {diagram_type} block is empty.")
+        elif diagram_type in _TEXT_DIAGRAM_TYPES:
+            for line in block_content.splitlines():
+                if len(line) > _MAX_TEXT_DIAGRAM_LINE_LENGTH:
+                    warnings.append(
+                        f"Diagram {record.id} has a text diagram line exceeding "
+                        f"{_MAX_TEXT_DIAGRAM_LINE_LENGTH} characters."
+                    )
+                    break
+    return warnings
+
+
+def _asciidoc_diagram_warnings(
+    record: ArchitectureRecord, diagram_type: str
+) -> list[str]:
+    warnings: list[str] = []
+    pattern = _ASCIIDOC_BLOCK_PATTERNS.get(diagram_type)
+    if pattern is None:
+        return warnings
+    if diagram_type == "mermaid":
         if not _has_asciidoc_mermaid_block(record.body):
             warnings.append(
                 f"Diagram {record.id} asciidoc body is missing a [mermaid] block."
             )
         elif _asciidoc_mermaid_block_is_empty(record.body):
             warnings.append(f"Diagram {record.id} asciidoc mermaid block is empty.")
+    elif diagram_type == "svgbob":
+        match = pattern.search(record.body)
+        if not match:
+            warnings.append(
+                f"Diagram {record.id} asciidoc body is missing a [svgbob] block."
+            )
+        else:
+            block_content = match.group(1) or ""
+            if not block_content.strip():
+                warnings.append(f"Diagram {record.id} svgbob block is empty.")
+    else:
+        match = pattern.search(record.body)
+        if not match:
+            warnings.append(
+                f"Diagram {record.id} asciidoc body is missing a "
+                f"{diagram_type} text block."
+            )
+        else:
+            groups = [g for g in match.groups() if g is not None]
+            block_content = groups[0] if groups else ""
+            if not block_content.strip():
+                warnings.append(f"Diagram {record.id} {diagram_type} block is empty.")
+            elif diagram_type in _TEXT_DIAGRAM_TYPES:
+                for line in block_content.splitlines():
+                    if len(line) > _MAX_TEXT_DIAGRAM_LINE_LENGTH:
+                        warnings.append(
+                            f"Diagram {record.id} has a text diagram line "
+                            f"exceeding {_MAX_TEXT_DIAGRAM_LINE_LENGTH} characters."
+                        )
+                        break
     return warnings
-
-
-def _has_markdown_mermaid_block(body: str) -> bool:
-    return bool(
-        re.search(r"```mermaid\s*\n.*?\n```", body, flags=re.IGNORECASE | re.DOTALL)
-    )
-
-
-def _markdown_mermaid_block_is_empty(body: str) -> bool:
-    match = re.search(
-        r"```mermaid\s*\n(.*?)\n```",
-        body,
-        flags=re.IGNORECASE | re.DOTALL,
-    )
-    if match is None:
-        return False
-    return not match.group(1).strip()
 
 
 def _has_asciidoc_mermaid_block(body: str) -> bool:

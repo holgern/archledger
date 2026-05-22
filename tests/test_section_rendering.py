@@ -18,7 +18,7 @@ def test_building_block_hierarchy_omits_empty_fulfilled_requirements_and_risks()
     assert "**Risks:**" not in rendered
 
 
-def test_building_block_hierarchy_renders_fulfilled_requirements_and_risks_when_present() -> (
+def test_building_block_hierarchy_renders_fulfilled_reqs_and_risks_when_present() -> (
     None
 ):
     record = _black_box_record(

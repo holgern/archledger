@@ -29,12 +29,16 @@ def test_check_warns_for_diagram_without_markdown_mermaid_block(tmp_path: Path) 
             "Runtime login flow",
             "--status",
             "accepted",
+            "--diagram-type",
+            "mermaid",
         ],
     )
     diagram_path = tmp_path / ".archledger" / "records" / "diagrams" / "diagram_0001.md"
     diagram_path.write_text(
         diagram_path.read_text(encoding="utf-8").replace(
-            "```mermaid\nflowchart LR\n  A[Start] --> B[Describe architecture flow]\n```",
+            "```mermaid\n"
+            "flowchart LR\n  A[Start] --> B[Describe architecture flow]\n"
+            "```",
             "No mermaid block here.",
         ),
         encoding="utf-8",
@@ -63,6 +67,8 @@ def test_check_warns_for_diagram_without_asciidoc_mermaid_block(tmp_path: Path) 
             "Runtime login flow",
             "--status",
             "accepted",
+            "--diagram-type",
+            "mermaid",
         ],
     )
     diagram_path = (
@@ -70,7 +76,9 @@ def test_check_warns_for_diagram_without_asciidoc_mermaid_block(tmp_path: Path) 
     )
     diagram_path.write_text(
         diagram_path.read_text(encoding="utf-8").replace(
-            "[mermaid]\n....\nflowchart LR\n  A[Start] --> B[Describe architecture flow]\n....",
+            "[mermaid]\n....\n"
+            "flowchart LR\n  A[Start] --> B[Describe architecture flow]\n"
+            "....",
             "No mermaid block here.",
         ),
         encoding="utf-8",
@@ -98,12 +106,16 @@ def test_check_warns_for_empty_markdown_mermaid_block(tmp_path: Path) -> None:
             "Runtime login flow",
             "--status",
             "accepted",
+            "--diagram-type",
+            "mermaid",
         ],
     )
     diagram_path = tmp_path / ".archledger" / "records" / "diagrams" / "diagram_0001.md"
     diagram_path.write_text(
         diagram_path.read_text(encoding="utf-8").replace(
-            "```mermaid\nflowchart LR\n  A[Start] --> B[Describe architecture flow]\n```",
+            "```mermaid\n"
+            "flowchart LR\n  A[Start] --> B[Describe architecture flow]\n"
+            "```",
             "```mermaid\n\n```",
         ),
         encoding="utf-8",
@@ -114,7 +126,7 @@ def test_check_warns_for_empty_markdown_mermaid_block(tmp_path: Path) -> None:
     assert result.exit_code == 0
     warnings = json.loads(result.stdout)["result"]["warnings"]
     messages = [item["message"] for item in warnings]
-    assert "Diagram diagram_0001 markdown mermaid block is empty." in messages
+    assert "Diagram diagram_0001 mermaid block is empty." in messages
 
 
 def init_project(tmp_path: Path, source_format: str) -> None:
@@ -270,3 +282,171 @@ def test_mermaid_cli_missing_has_actionable_error(tmp_path: Path) -> None:
             tool_resolver=lambda _: None,
         )
     assert "mmdc executable was not found" in str(excinfo.value)
+
+
+def test_new_diagram_defaults_to_text_type(tmp_path: Path) -> None:
+    init_project(tmp_path, source_format="markdown")
+    runner.invoke(
+        app,
+        ["--root", str(tmp_path), "new", "diagram", "Architecture overview"],
+    )
+    diagram_path = tmp_path / ".archledger" / "records" / "diagrams" / "diagram_0001.md"
+    content = diagram_path.read_text(encoding="utf-8")
+    assert 'diagram_type: "text"' in content
+    assert "```textdiagram" in content
+
+
+def test_new_diagram_uses_configured_default_type(tmp_path: Path) -> None:
+    init_project(tmp_path, source_format="markdown")
+    config_path = tmp_path / "archledger.toml"
+    config_path.write_text(
+        config_path.read_text(encoding="utf-8").replace(
+            'default_type = "text"', 'default_type = "unicode"'
+        ),
+        encoding="utf-8",
+    )
+    runner.invoke(
+        app,
+        ["--root", str(tmp_path), "new", "diagram", "Unicode diagram"],
+    )
+    diagram_path = tmp_path / ".archledger" / "records" / "diagrams" / "diagram_0001.md"
+    content = diagram_path.read_text(encoding="utf-8")
+    assert 'diagram_type: "unicode"' in content
+    assert "```textdiagram" in content
+
+
+def test_check_accepts_markdown_textdiagram_block(tmp_path: Path) -> None:
+    init_project(tmp_path, source_format="markdown")
+    runner.invoke(
+        app,
+        ["--root", str(tmp_path), "new", "diagram", "Text diagram"],
+    )
+
+    result = runner.invoke(app, ["--root", str(tmp_path), "--json", "check"])
+
+    assert result.exit_code == 0
+    warnings = json.loads(result.stdout)["result"]["warnings"]
+    messages = [item["message"] for item in warnings]
+    assert not any("missing a fenced" in m and "diagram_0001" in m for m in messages)
+
+
+def test_check_accepts_markdown_unicode_textdiagram_block(tmp_path: Path) -> None:
+    init_project(tmp_path, source_format="markdown")
+    runner.invoke(
+        app,
+        [
+            "--root",
+            str(tmp_path),
+            "new",
+            "diagram",
+            "Unicode diagram",
+            "--diagram-type",
+            "unicode",
+        ],
+    )
+
+    result = runner.invoke(app, ["--root", str(tmp_path), "--json", "check"])
+
+    assert result.exit_code == 0
+    warnings = json.loads(result.stdout)["result"]["warnings"]
+    messages = [item["message"] for item in warnings]
+    assert not any("missing a fenced" in m and "diagram_0001" in m for m in messages)
+
+
+def test_check_accepts_asciidoc_source_text_block(tmp_path: Path) -> None:
+    init_project(tmp_path, source_format="asciidoc")
+    runner.invoke(
+        app,
+        ["--root", str(tmp_path), "new", "diagram", "AsciiDoc text diagram"],
+    )
+
+    result = runner.invoke(app, ["--root", str(tmp_path), "--json", "check"])
+
+    assert result.exit_code == 0
+    warnings = json.loads(result.stdout)["result"]["warnings"]
+    messages = [item["message"] for item in warnings]
+    assert not any("missing" in m and "diagram_0001" in m for m in messages)
+
+
+def test_check_warns_for_empty_textdiagram_block(tmp_path: Path) -> None:
+    init_project(tmp_path, source_format="markdown")
+    runner.invoke(
+        app,
+        ["--root", str(tmp_path), "new", "diagram", "Empty text diagram"],
+    )
+    diagram_path = tmp_path / ".archledger" / "records" / "diagrams" / "diagram_0001.md"
+    diagram_path.write_text(
+        diagram_path.read_text(encoding="utf-8").replace(
+            "```textdiagram\n"
+            "┌─────────┐     ┌──────────┐\n"
+            "│ Source  │ ──> │ Output   │\n"
+            "└─────────┘     └──────────┘\n"
+            "```",
+            "```textdiagram\n\n```",
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(app, ["--root", str(tmp_path), "--json", "check"])
+
+    assert result.exit_code == 0
+    warnings = json.loads(result.stdout)["result"]["warnings"]
+    messages = [item["message"] for item in warnings]
+    assert "Diagram diagram_0001 text block is empty." in messages
+
+
+def test_check_warns_for_overwide_textdiagram_line(tmp_path: Path) -> None:
+    init_project(tmp_path, source_format="markdown")
+    runner.invoke(
+        app,
+        ["--root", str(tmp_path), "new", "diagram", "Wide text diagram"],
+    )
+    diagram_path = tmp_path / ".archledger" / "records" / "diagrams" / "diagram_0001.md"
+    wide_line = "─" * 130
+    diagram_path.write_text(
+        diagram_path.read_text(encoding="utf-8").replace(
+            "```textdiagram\n"
+            "┌─────────┐     ┌──────────┐\n"
+            "│ Source  │ ──> │ Output   │\n"
+            "└─────────┘     └──────────┘\n"
+            "```",
+            f"```textdiagram\n{wide_line}\n```",
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(app, ["--root", str(tmp_path), "--json", "check"])
+
+    assert result.exit_code == 0
+    warnings = json.loads(result.stdout)["result"]["warnings"]
+    messages = [item["message"] for item in warnings]
+    assert any(
+        "exceeding 120 characters" in m and "diagram_0001" in m for m in messages
+    )
+
+
+def test_mermaid_still_supported_when_requested(tmp_path: Path) -> None:
+    init_project(tmp_path, source_format="markdown")
+    runner.invoke(
+        app,
+        [
+            "--root",
+            str(tmp_path),
+            "new",
+            "diagram",
+            "Sequence diagram",
+            "--diagram-type",
+            "mermaid",
+        ],
+    )
+    diagram_path = tmp_path / ".archledger" / "records" / "diagrams" / "diagram_0001.md"
+    content = diagram_path.read_text(encoding="utf-8")
+    assert 'diagram_type: "mermaid"' in content
+    assert "```mermaid" in content
+
+    result = runner.invoke(app, ["--root", str(tmp_path), "--json", "check"])
+
+    assert result.exit_code == 0
+    warnings = json.loads(result.stdout)["result"]["warnings"]
+    messages = [item["message"] for item in warnings]
+    assert not any("unsupported diagram_type" in m for m in messages)

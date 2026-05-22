@@ -23,10 +23,12 @@ risks: []
 tags: []
 body_format: markdown
 created_at: "2026-05-21T11:30:43Z"
-updated_at: "2026-05-21T11:30:43Z"
+updated_at: "2026-05-22T07:00:00Z"
 source_refs:
   - path: archledger/config/
     reason: Config subpackage with model, parse, render
 ---
 
 The `config` subpackage owns all project configuration concerns. `config/model.py` defines frozen dataclasses for each configuration domain: `SourceConfig`, `BuildConfig` (with nested `BuildOutputConfig`), `Arc42Config`, `SkillConfig`, `TrackingConfig`, and the unified `ProjectConfig` facade that composes them via properties. `config/parse.py` loads and validates `archledger.toml` using `tomllib` (or `tomli` for Python < 3.11), with strict key validation and environment variable expansion. `config/render.py` generates default configuration files for `archledger init`. The subpackage re-exports key types from `__init__.py`.
+
+The `[diagrams]` section supports five diagram types (`text`, `ascii`, `unicode`, `svgbob`, `mermaid`) and six renderers (`pass-through`, `mermaid-cli`, `svgbob`, `goat`, `asciidoctor-diagram`, `kroki`). The default diagram type is `text`, ensuring that new diagram records produce readable text-based diagrams in native builds without any external tooling.

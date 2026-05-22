@@ -6,8 +6,8 @@ title: "Deployment Topology"
 status: accepted
 section: deployment_view
 order: 40
-date: "2026-05-21"
-diagram_type: "mermaid"
+date: "2026-05-22"
+diagram_type: "unicode"
 caption: "archledger deployment nodes and their relationships"
 
 related_records:
@@ -21,51 +21,40 @@ tags:
   - deployment
 body_format: markdown
 created_at: "2026-05-21T19:34:08Z"
-updated_at: "2026-05-21T19:38:00Z"
+updated_at: "2026-05-22T07:15:00Z"
 ---
 
-archledger has no server component. It runs as a local CLI tool on developer machines and in CI runners. The storage directory is co-located with the source repository.
+archledger has no server component. It runs as a local CLI tool on developer
+machines and in CI runners. The storage directory is co-located with the source
+repository.
 
-```mermaid
-graph TB
-    subgraph "Developer Machine"
-        DevEnv["Python 3.10+\nvenv / system"]
-        DevCLI["archledger CLI\n(console script)"]
-        DevWorkspace["Project Workspace\n.archledger/ + source/"]
-        DevOutput["Build Output\nARCHITECTURE.md"]
-        DevConverters["Optional Tools\npandoc, asciidoctor"]
+```textdiagram
+┌─ Developer Machine ───────────────────────────────────────────┐
+│                                                               │
+│  Python 3.10+ (venv / system)                                 │
+│       │                                                       │
+│  ┌────▼───────────┐   ┌──────────────┐  ┌──────────────────┐ │
+│  │ archledger CLI │──>│  Workspace   │  │  Build Output    │ │
+│  │ (console       │   │ .archledger/ │  │ ARCHITECTURE.md  │ │
+│  │  script)       │   │  + source/   │  │  + exports       │ │
+│  └────────────────┘   └──────────────┘  └──────────────────┘ │
+│       │ optional                                              │
+│  ┌────▼────────────────┐                                     │
+│  │ pandoc / asciidoctor│                                     │
+│  └─────────────────────┘                                     │
+└───────────────────────────────────────────────────────────────┘
 
-        DevCLI --> DevWorkspace
-        DevCLI --> DevOutput
-        DevCLI -.->|"optional"| DevConverters
-    end
+┌─ CI Runner ──────────────────────────────────────────────────┐
+│  Python 3.10+ ──> archledger CLI ──> Build Artifacts        │
+└────────────────────────────────┬─────────────────────────────┘
+                                 │ publish
+                                 ▼
+                          ┌──────────────┐
+                          │ Docs Hosting │
+                          └──────────────┘
 
-    subgraph "CI Runner"
-        CIPython["Python 3.10+"]
-        CICLI["archledger CLI"]
-        CIWorkspace["Checkout\n.archledger/ + source/"]
-        CIArtifact["Build Artifacts"]
-
-        CICLI --> CIWorkspace
-        CICLI --> CIArtifact
-    end
-
-    subgraph "PyPI"
-        PyPI["archledger wheel"]
-    end
-
-    PyPI -->|"pip install"| DevEnv
-    PyPI -->|"pip install"| CIPython
-
-    DevEnv --> DevCLI
-    CIPython --> CICLI
-
-    DevWorkspace -->|"git push"| CIWorkspace
-    CIArtifact -->|"publish"| Docs["Docs Hosting"]
-
-    style DevCLI fill:#4a9eff,color:#fff
-    style CICLI fill:#4a9eff,color:#fff
-    style PyPI fill:#fdcb6e
-    style DevConverters fill:#f0f0f0,stroke-dasharray: 5 5
-    style Docs fill:#00b894,color:#fff
+┌─ PyPI ──────────────┐
+│ archledger wheel    │── pip install ──> Developer Machine
+│                     │── pip install ──> CI Runner
+└─────────────────────┘
 ```

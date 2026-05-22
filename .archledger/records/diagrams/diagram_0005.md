@@ -6,7 +6,7 @@ title: "Source Tracking Flow"
 status: accepted
 section: cross_cutting_concepts
 order: 50
-date: "2026-05-21"
+date: "2026-05-22"
 diagram_type: "mermaid"
 caption: "How source tracking detects changes and maps them to impacted records"
 
@@ -20,7 +20,7 @@ tags:
   - change-detection
 body_format: markdown
 created_at: "2026-05-21T19:34:14Z"
-updated_at: "2026-05-21T19:39:00Z"
+updated_at: "2026-05-22T07:15:00Z"
 ---
 
 Source tracking compares a saved baseline against the current workspace state. It uses SHA-256 file hashes and matches changed paths against record `source_refs` to report impacted architecture records.

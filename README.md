@@ -251,23 +251,32 @@ archledger --json build --format html --format markdown
 
 Per-output overrides live under `[build.outputs.<format>]`. Supported keys are `tool`, `pdf_engine`, `reference_docx`, and `enabled`. Supported tool values are `auto`, `pandoc`, and `asciidoctor`.
 
-## Mermaid diagrams
+## Diagram records
+
+Diagram records are plain text by default. Dense architecture diagrams should use
+`diagram_type = "text"` or `"unicode"` so they remain readable in source,
+Git diffs, terminal output, and native Markdown/AsciiDoc builds. Mermaid remains
+available for compact diagrams, but it is not the default.
 
 Create first-class diagram records directly:
 
 ```bash
 archledger new diagram "Runtime login flow" --section runtime_view --status proposed
 archledger new diagram "Deployment topology" --section deployment_view --caption "Target deployment"
+archledger new diagram "Login sequence" --diagram-type mermaid
 ```
 
-Native markdown/asciidoc builds keep Mermaid source blocks as pass-through text.
-Rendered image materialization for converter-backed formats is optional and disabled
-by default:
+Supported `diagram_type` values: `text` (default), `ascii`, `unicode`, `svgbob`, `mermaid`.
+
+Native Markdown/AsciiDoc builds preserve text diagram blocks as readable fenced/literal
+blocks without any external tool. Rendered image materialization for converter-backed
+formats is optional and disabled by default:
 
 ```toml
 [diagrams]
 enabled = true
-renderer = "mermaid-cli" # pass-through | mermaid-cli | asciidoctor-diagram | kroki
+renderer = "mermaid-cli"  # pass-through | mermaid-cli | svgbob | asciidoctor-diagram | kroki
+default_type = "text"
 output_dir = "diagrams"
 image_format = "svg"
 kroki_url = ""
