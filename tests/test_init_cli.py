@@ -35,7 +35,10 @@ def test_init_project_name_defaults_to_workspace_basename(tmp_path: Path) -> Non
 
     assert result.exit_code == 0
     config_text = (tmp_path / "archledger.toml").read_text(encoding="utf-8")
-    assert "config_version = 5" in config_text
+    assert "config_version = 6" in config_text
+    assert "[ids]" in config_text
+    assert 'prefix = "al"' in config_text
+    assert "width = 4" in config_text
     assert "[source]" in config_text
     assert 'format = "asciidoc"' in config_text
     assert "schema_version = 2" in config_text
@@ -244,6 +247,8 @@ def test_schema_json_lists_record_types_statuses_sections_and_formats(
     assert schema["sections"]
     assert schema["source_formats"]
     assert schema["output_formats"]
+    assert schema["id_format"] == {"prefix": "al", "width": 4}
+    assert schema["id_pattern"] == r"^al_(?P<number>\d{4,})$"
 
 
 def test_repo_init_does_not_rewrite_existing_storage_meta_without_overwrite(
@@ -439,3 +444,37 @@ def test_init_skill_installed_defaults_to_false(tmp_path: Path) -> None:
     config_text = (tmp_path / "archledger.toml").read_text(encoding="utf-8")
     # Under [skill] section, installed should be false
     assert "installed = false" in config_text
+
+
+def test_init_custom_id_format_writes_config_and_sections(tmp_path: Path) -> None:
+    result = runner.invoke(
+        app,
+        [
+            "--root",
+            str(tmp_path),
+            "init",
+            "--source-format",
+            "markdown",
+            "--id-prefix",
+            "ta",
+            "--id-width",
+            "3",
+        ],
+    )
+
+    assert result.exit_code == 0
+    config_text = (tmp_path / "archledger.toml").read_text(encoding="utf-8")
+    assert "[ids]" in config_text
+    assert 'prefix = "ta"' in config_text
+    assert "width = 3" in config_text
+    assert (tmp_path / ".archledger" / "sections" / "ta_001.md").is_file()
+    assert (tmp_path / ".archledger" / "sections" / "ta_012.md").is_file()
+
+    new_result = runner.invoke(
+        app,
+        ["--root", str(tmp_path), "new", "requirement", "Local accounting"],
+    )
+    assert new_result.exit_code == 0
+    assert (
+        tmp_path / ".archledger" / "records" / "requirements" / "ta_013.md"
+    ).is_file()

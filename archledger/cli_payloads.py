@@ -3,7 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from archledger.converters import BuildResult
-from archledger.ids import format_ledger_id
+from archledger.ids import (
+    DEFAULT_ID_PREFIX,
+    DEFAULT_ID_WIDTH,
+    LedgerIdFormat,
+    format_ledger_id,
+)
 from archledger.migration import MigrationResult
 from archledger.model import (
     MAJOR_SECTION_SPECS,
@@ -15,6 +20,7 @@ from archledger.model import (
     normalize_kind,
 )
 from archledger.record_types import RECORD_TYPE_SPECS
+from archledger.renumber import RenumberResult
 from archledger.repository import (
     ArchitectureRepository,
     ArchiveResult,
@@ -87,7 +93,8 @@ def schema_payload(
     paths: ProjectPaths,
     config: ProjectConfig,
 ) -> dict[str, object]:
-    del repo, paths, config
+    del repo, paths
+    id_format = LedgerIdFormat(prefix=config.id_prefix, width=config.id_width)
     return {
         "schema": "archledger.schema.v1",
         "record_types": [
@@ -100,9 +107,13 @@ def schema_payload(
             for spec in RECORD_TYPE_SPECS
         ],
         "id_strategy": "ledger-wide",
-        "id_pattern": r"^al_[0-9]{4,}$",
+        "id_format": {
+            "prefix": config.id_prefix,
+            "width": config.id_width,
+        },
+        "id_pattern": id_format.pattern_text,
         "reserved_section_ids": {
-            section.key: format_ledger_id(section.number)
+            section.key: id_format.format(section.number)
             for section in MAJOR_SECTION_SPECS
         },
         "statuses": sorted(VALID_STATUSES),
@@ -338,7 +349,12 @@ def archive_payload(result: ArchiveResult) -> dict[str, object]:
     }
 
 
-def doctor_payload(result: DoctorResult) -> dict[str, object]:
+def doctor_payload(
+    result: DoctorResult,
+    *,
+    id_prefix: str = DEFAULT_ID_PREFIX,
+    id_width: int = DEFAULT_ID_WIDTH,
+) -> dict[str, object]:
     return {
         "schema": "archledger.doctor.v1",
         "errors": [finding_payload(finding) for finding in result.errors],
@@ -357,9 +373,51 @@ def doctor_payload(result: DoctorResult) -> dict[str, object]:
             "highest_seen": result.highest_seen,
             "storage_next_number_before": result.storage_next_number_before,
             "storage_next_number_after": result.storage_next_number_after,
-            "missing_ids": [format_ledger_id(n) for n in result.missing_numbers],
-            "duplicate_ids": [format_ledger_id(n) for n in result.duplicate_numbers],
+            "missing_ids": [
+                format_ledger_id(n, prefix=id_prefix, width=id_width)
+                for n in result.missing_numbers
+            ],
+            "duplicate_ids": [
+                format_ledger_id(n, prefix=id_prefix, width=id_width)
+                for n in result.duplicate_numbers
+            ],
         },
+    }
+
+
+def renumber_payload(result: RenumberResult) -> dict[str, object]:
+    return {
+        "schema": "archledger.renumber.v1",
+        "apply": result.apply,
+        "old_format": {
+            "prefix": result.old_prefix,
+            "width": result.old_width,
+        },
+        "new_format": {
+            "prefix": result.new_prefix,
+            "width": result.new_width,
+        },
+        "renamed_count": len(result.renamed),
+        "rewritten_count": len(result.rewritten),
+        "renamed": [
+            {
+                "old_id": item.old_id,
+                "new_id": item.new_id,
+                "from": str(item.old_path),
+                "to": str(item.new_path),
+            }
+            for item in result.renamed
+        ],
+        "rewritten": [
+            {
+                "path": str(item.path),
+                "replacement_count": item.replacement_count,
+            }
+            for item in result.rewritten
+        ],
+        "config_path": str(result.config_path),
+        "storage_next_number_before": result.storage_next_number_before,
+        "storage_next_number_after": result.storage_next_number_after,
     }
 
 

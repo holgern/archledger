@@ -18,6 +18,12 @@ from archledger.config.model import (
     normalize_project_name,
 )
 from archledger.errors import ConfigError
+from archledger.ids import (
+    DEFAULT_ID_PREFIX,
+    DEFAULT_ID_WIDTH,
+    validate_id_prefix,
+    validate_id_width,
+)
 from archledger.model import (
     CURRENT_SOURCE_SCHEMA_VERSION,
     VALID_OUTPUT_FORMATS,
@@ -38,6 +44,7 @@ _ALLOWED_TOP_LEVEL_KEYS = {
     "archledger_dir",
     "project_uuid",
     "project_name",
+    "ids",
     "source",
     "build",
     "arc42",
@@ -60,6 +67,7 @@ _ALLOWED_BUILD_KEYS = {
     "diagrams",
 }
 _ALLOWED_BUILD_OUTPUT_KEYS = {"enabled", "pdf_engine", "reference_docx", "tool"}
+_ALLOWED_IDS_KEYS = {"prefix", "width"}
 _ALLOWED_ARC42_KEYS = {"template_version", "language", "title", "include_help"}
 _ALLOWED_SKILL_KEYS = {"installed", "path"}
 _ALLOWED_TRACKING_KEYS = {
@@ -114,6 +122,12 @@ def load_project_config(path: Path) -> ProjectConfig:
         _ALLOWED_BUILD_KEYS,
         "build",
     )
+    ids_data = _validate_subtable(
+        path,
+        raw_data.get("ids"),
+        _ALLOWED_IDS_KEYS,
+        "ids",
+    )
     source_data = _validate_subtable(
         path,
         raw_data.get("source"),
@@ -146,8 +160,8 @@ def load_project_config(path: Path) -> ProjectConfig:
     )
 
     config_version = raw_data.get("config_version")
-    if isinstance(config_version, bool) or config_version not in {1, 2, 3, 4, 5}:
-        raise ConfigError("config_version must be 1, 2, 3, 4, or 5.")
+    if isinstance(config_version, bool) or config_version not in {1, 2, 3, 4, 5, 6}:
+        raise ConfigError("config_version must be 1, 2, 3, 4, 5, or 6.")
 
     archledger_dir = raw_data.get("archledger_dir")
     if not isinstance(archledger_dir, str) or not archledger_dir.strip():
@@ -182,6 +196,7 @@ def load_project_config(path: Path) -> ProjectConfig:
         build_outputs,
     ) = _parse_build_config(build_data, cast(int, config_version), source_format)
     template_version, language, title, include_help = _parse_arc42_config(arc42_data)
+    id_prefix, id_width = _parse_ids_config(ids_data)
     skill_installed, skill_path = _parse_skill_config(skill_data)
     (
         tracking_enabled,
@@ -206,6 +221,8 @@ def load_project_config(path: Path) -> ProjectConfig:
         archledger_dir=archledger_dir,
         project_uuid=_validate_uuid(project_uuid),
         project_name=normalize_project_name(project_name),
+        id_prefix=id_prefix,
+        id_width=id_width,
         source_format=source_format,
         source_schema_version=source_schema_version,
         front_matter=front_matter.strip().lower(),
@@ -242,6 +259,25 @@ def load_project_config(path: Path) -> ProjectConfig:
         diagram_image_format=diagram_image_format,
         diagram_kroki_url=diagram_kroki_url,
     )
+
+
+def _parse_ids_config(ids_data: dict[str, object]) -> tuple[str, int]:
+    prefix_value = ids_data.get("prefix", DEFAULT_ID_PREFIX)
+    width_value = ids_data.get("width", DEFAULT_ID_WIDTH)
+
+    if not isinstance(prefix_value, str):
+        raise ConfigError("ids.prefix must be a string.")
+    try:
+        prefix = validate_id_prefix(prefix_value)
+    except ValueError as exc:
+        raise ConfigError(str(exc)) from exc
+
+    try:
+        width = validate_id_width(width_value)  # type: ignore[arg-type]
+    except ValueError as exc:
+        raise ConfigError(str(exc)) from exc
+
+    return prefix, width
 
 
 def _validate_subtable(

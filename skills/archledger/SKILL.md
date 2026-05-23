@@ -54,6 +54,7 @@ Then:
 3. Use generated exports only as disposable deliverables.
 4. Use `archledger build --format markdown` or `archledger build --format asciidoc` for native validation.
 5. Do not read generated build output from the configured build output directory as source of truth.
+6. Read `archledger.toml` `[ids]` settings before creating, validating, or rewriting ledger ID references.
 
 If storage is missing and the user asked to create architecture docs in this repository:
 
@@ -98,6 +99,7 @@ updated_at: "2026-05-20T00:00:00Z"
 ```
 
 `body_format` must match the project source format (`markdown` or `asciidoc`).
+Ledger IDs must match the configured `[ids]` prefix/width in `archledger.toml`; do not hardcode `al_` in automation.
 
 When a fragment documents concrete implementation artifacts, add optional `source_refs` metadata:
 

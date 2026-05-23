@@ -208,6 +208,41 @@ def test_new_requirement_creates_requirement_0001(tmp_path: Path) -> None:
     assert "[discrete]\n=== Requirement" in created
 
 
+def test_new_record_uses_configured_id_format(tmp_path: Path) -> None:
+    init_result = runner.invoke(
+        app,
+        [
+            "--root",
+            str(tmp_path),
+            "init",
+            "--source-format",
+            "markdown",
+            "--id-prefix",
+            "ta",
+            "--id-width",
+            "3",
+        ],
+    )
+    assert init_result.exit_code == 0
+
+    result = runner.invoke(
+        app,
+        [
+            "--root",
+            str(tmp_path),
+            "--json",
+            "new",
+            "requirement",
+            "Local accounting",
+        ],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["result"]["id"] == "ta_013"
+    assert payload["result"]["path"].endswith("records/requirements/ta_013.md")
+
+
 def test_new_requirement_increments_with_custom_record_extension(
     tmp_path: Path,
 ) -> None:

@@ -70,6 +70,7 @@ Converter-backed formats are part of the supported workflow only when those tool
 
 ```bash
 archledger init --source-format markdown
+archledger init --source-format markdown --id-prefix ta --id-width 3
 archledger seed arc42-minimal
 archledger --json read --body
 archledger build --format markdown
@@ -115,6 +116,16 @@ updated_at: "2026-05-20T00:00:00Z"
 ### Sections and records
 
 Sections are the arc42 chapter skeleton. Records hold individual requirements, decisions, building blocks, risks, and other architecture facts. Use the CLI to allocate paths and ids, then edit the generated fragment.
+
+ID format is configurable via `[ids]`:
+
+```toml
+[ids]
+prefix = "al"
+width = 4
+```
+
+Use `archledger renumber --prefix ta --width 3` (dry run) and `archledger renumber --prefix ta --width 3 --apply` to migrate existing source IDs and references.
 
 ### Generated outputs
 
@@ -316,13 +327,17 @@ Use this escape hatch only when you explicitly accept a manual cleanup step. Run
 
 ## Configuration reference
 
-Example config v5:
+Example config v6:
 
 ```toml
-config_version = 5
+config_version = 6
 archledger_dir = ".archledger"
 project_uuid = "..."
 project_name = "my-project"
+
+[ids]
+prefix = "al"
+width = 4
 
 [source]
 format = "markdown"       # markdown | asciidoc
@@ -380,6 +395,8 @@ Use:
 ```bash
 archledger doctor
 archledger doctor --repair
+archledger renumber --prefix ta --width 3
+archledger renumber --prefix ta --width 3 --apply
 ```
 
 `doctor --repair` can recreate missing required section files, create archive tombstones for missing non-section IDs, and recompute `storage.yaml.next_number` without renumbering existing records.

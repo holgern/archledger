@@ -255,3 +255,22 @@ def format_convert_sources_message(payload: dict[str, object]) -> str:
     for warning in warnings:
         lines.append(f"warning: {warning}")
     return "\n".join(lines)
+
+
+def format_renumber_message(payload: dict[str, object]) -> str:
+    old_format = payload.get("old_format")
+    new_format = payload.get("new_format")
+    if not isinstance(old_format, dict) or not isinstance(new_format, dict):
+        raise RuntimeError("renumber payload was malformed.")
+    action = "Renumbered" if payload.get("apply") else "Planned renumbering"
+    lines = [
+        (
+            f"{action}: {old_format['prefix']}/{old_format['width']} -> "
+            f"{new_format['prefix']}/{new_format['width']}"
+        ),
+        f"Files to rename: {payload['renamed_count']}",
+        f"Files to rewrite: {payload['rewritten_count']}",
+    ]
+    if not payload.get("apply"):
+        lines.append("Re-run with --apply to apply the renumbering.")
+    return "\n".join(lines)

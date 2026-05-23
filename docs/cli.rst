@@ -39,7 +39,7 @@ Running ``init`` produces:
 
 - ``archledger.toml`` — project configuration (see :doc:`configuration`)
 - ``<archledger-dir>/`` — state directory (default ``.archledger``)
-- ``<archledger-dir>/sections/`` — 12 arc42 section stubs (``al_0001`` through ``al_0012``)
+- ``<archledger-dir>/sections/`` — 12 arc42 section stubs (default ``al_0001`` through ``al_0012``)
 - ``<archledger-dir>/records/`` — typed subdirectories:
 
   ``building_blocks``, ``concepts``, ``constraints``, ``contexts``,
@@ -51,7 +51,7 @@ Running ``init`` produces:
 - ``<archledger-dir>/build/`` — default build output directory
 - ``<archledger-dir>/storage.yaml`` — ledger counter state
 
-Section files are numbered ``al_0001`` through ``al_0012`` matching the 12
+Section files are numbered by configured ``[ids]`` format (default ``al_0001`` through ``al_0012``) matching the 12
 major arc42 sections:
 
 1. Introduction and Goals
@@ -94,6 +94,14 @@ Core options
 ``--project-uuid TEXT``
    Stable project UUID. Auto-generated when omitted.
    Must be a valid UUID format.
+
+``--id-prefix TEXT``
+   Ledger ID prefix for generated section/record IDs (for example ``al`` or ``ta``).
+   Default: ``al``.
+
+``--id-width N``
+   Minimum digit width for generated ledger IDs.
+   Default: ``4``.
 
 Build options
 ^^^^^^^^^^^^^
@@ -277,6 +285,13 @@ Archive and repair:
    archledger archive al_0022 --reason "obsolete after al_0041"
    archledger doctor
    archledger doctor --repair
+
+Renumber IDs and references:
+
+.. code-block:: bash
+
+   archledger renumber --prefix ta --width 3
+   archledger renumber --prefix ta --width 3 --apply
 
 ``check`` is read-only. It validates numbering and integrity but does not mutate counters or source files.
 

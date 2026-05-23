@@ -3,7 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from archledger.ids import format_ledger_id, is_ledger_id
+from archledger.ids import (
+    DEFAULT_ID_PREFIX,
+    DEFAULT_ID_WIDTH,
+    format_ledger_id,
+    is_ledger_id,
+)
 from archledger.record_types import (
     CLI_KIND_ALIASES as _CLI_KIND_ALIASES,
 )
@@ -209,7 +214,12 @@ def normalize_kind(kind: str) -> str:
         raise ValueError(f"Unsupported record kind: {kind}") from exc
 
 
-def validate_record(record: ArchitectureRecord) -> list[str]:
+def validate_record(
+    record: ArchitectureRecord,
+    *,
+    id_prefix: str = DEFAULT_ID_PREFIX,
+    id_width: int = DEFAULT_ID_WIDTH,
+) -> list[str]:
     issues: list[str] = []
     if record.type not in VALID_RECORD_TYPES and record.type != "section":
         issues.append(f"Unknown record type: {record.type}")
@@ -225,8 +235,10 @@ def validate_record(record: ArchitectureRecord) -> list[str]:
         issues.append(
             f"Record id {record.id!r} does not match filename stem {record.path.stem!r}"
         )
-    if not is_ledger_id(record.id):
-        issues.append(f"Record id {record.id!r} must match al_NNNN.")
+    if not is_ledger_id(record.id, prefix=id_prefix, width=id_width):
+        issues.append(
+            f"Record id {record.id!r} must match {id_prefix}_N{'N' * (id_width - 1)}."
+        )
     return issues
 
 
@@ -293,12 +305,29 @@ def empty_section_placeholder_for_source_format(source_format: str) -> str:
         raise ValueError(f"Unsupported source format: {source_format}") from exc
 
 
-def section_filename_for(section_spec: SectionSpec, extension: str = ".md") -> str:
-    return filename_for(section_spec.number, extension=extension)
+def section_filename_for(
+    section_spec: SectionSpec,
+    extension: str = ".md",
+    *,
+    id_prefix: str = DEFAULT_ID_PREFIX,
+    id_width: int = DEFAULT_ID_WIDTH,
+) -> str:
+    return filename_for(
+        section_spec.number,
+        extension=extension,
+        id_prefix=id_prefix,
+        id_width=id_width,
+    )
 
 
-def filename_for(number: int, extension: str = ".md") -> str:
-    return f"{format_ledger_id(number)}{extension}"
+def filename_for(
+    number: int,
+    extension: str = ".md",
+    *,
+    id_prefix: str = DEFAULT_ID_PREFIX,
+    id_width: int = DEFAULT_ID_WIDTH,
+) -> str:
+    return f"{format_ledger_id(number, prefix=id_prefix, width=id_width)}{extension}"
 
 
 def id_from_filename(path: Path) -> str:

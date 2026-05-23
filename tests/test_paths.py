@@ -232,6 +232,8 @@ def test_project_config_fields_are_accounted_for() -> None:
         "archledger_dir",
         "project_uuid",
         "project_name",
+        "id_prefix",
+        "id_width",
         "source_format",
         "source_schema_version",
         "front_matter",
@@ -612,7 +614,37 @@ def test_config_version_bool_is_rejected(tmp_path: Path) -> None:
 
     with pytest.raises(ConfigError) as excinfo:
         resolve_project_paths(workspace_root)
-    assert str(excinfo.value) == "config_version must be 1, 2, 3, 4, or 5."
+    assert str(excinfo.value) == "config_version must be 1, 2, 3, 4, 5, or 6."
+
+
+def test_v6_config_supports_ids_table(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "workspace-v6-ids"
+    workspace_root.mkdir()
+    (workspace_root / "archledger.toml").write_text(
+        "\n".join(
+            [
+                "config_version = 6",
+                'archledger_dir = ".archledger"',
+                'project_uuid = "12345678-1234-1234-1234-123456789abc"',
+                'project_name = "demo"',
+                "",
+                "[ids]",
+                'prefix = "ta"',
+                "width = 3",
+                "",
+                "[source]",
+                'format = "markdown"',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    _, config, warnings = resolve_project_paths(workspace_root)
+
+    assert warnings == []
+    assert config.id_prefix == "ta"
+    assert config.id_width == 3
 
 
 @pytest.mark.parametrize(

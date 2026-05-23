@@ -16,6 +16,12 @@ from archledger.config.model import (
     normalize_project_name,
 )
 from archledger.errors import ConfigError
+from archledger.ids import (
+    DEFAULT_ID_PREFIX,
+    DEFAULT_ID_WIDTH,
+    validate_id_prefix,
+    validate_id_width,
+)
 from archledger.model import (
     VALID_SOURCE_FORMATS,
     default_document_filename_for_output_format,
@@ -29,6 +35,8 @@ def build_default_project_config(
     *,
     archledger_dir: str,
     source_format: str = "asciidoc",
+    id_prefix: str = DEFAULT_ID_PREFIX,
+    id_width: int = DEFAULT_ID_WIDTH,
     project_name: str | None = None,
     project_uuid: str | None = None,
     # Build options
@@ -77,6 +85,8 @@ def build_default_project_config(
     )
     _validate_enum(build_converter, VALID_BUILD_CONVERTERS, "build.converter")
     _validate_enum(tracking_scanner, VALID_TRACKING_SCANNERS, "tracking.scanner")
+    validated_id_prefix = validate_id_prefix(id_prefix)
+    validated_id_width = validate_id_width(id_width)
 
     default_extension = default_extension_for_source_format(normalized_source_format)
     native_format = native_output_format_for_source_format(normalized_source_format)
@@ -92,10 +102,12 @@ def build_default_project_config(
         str(uuid4()) if project_uuid is None else _validate_uuid(project_uuid)
     )
     return ProjectConfig(
-        config_version=5,
+        config_version=6,
         archledger_dir=archledger_dir,
         project_uuid=normalized_uuid,
         project_name=normalized_project_name,
+        id_prefix=validated_id_prefix,
+        id_width=validated_id_width,
         source_format=normalized_source_format,
         front_matter="yaml",
         section_extension=default_extension,
@@ -159,6 +171,10 @@ def render_project_config(config: ProjectConfig) -> str:
         "# Stable project identity. Commit this with your source tree.",
         f"project_uuid = {_toml_string(config.project_uuid)}",
         f"project_name = {_toml_string(config.project_name)}",
+        "",
+        "[ids]",
+        f"prefix = {_toml_string(config.id_prefix)}",
+        f"width = {config.id_width}",
         "",
         "[source]",
         f"format = {_toml_string(config.source_format)}",

@@ -7,6 +7,7 @@ Important sections
 ------------------
 
 - ``[source]`` controls the canonical source dialect and extensions.
+- ``[ids]`` controls ledger ID prefix/width (default ``al``/``4``).
 - ``[build]`` controls default output behavior and converter selection.
 - ``[tracking]`` controls workspace snapshots and change detection.
 - ``[arc42]`` controls document metadata defaults.
@@ -17,8 +18,12 @@ Example
 
 .. code-block:: toml
 
-   config_version = 5
+   config_version = 6
    archledger_dir = ".archledger"
+
+   [ids]
+   prefix = "al"
+   width = 4
 
    [source]
    format = "markdown"

@@ -43,6 +43,9 @@ from archledger.cli_formatting import (
     format_read_message as _format_read_message,
 )
 from archledger.cli_formatting import (
+    format_renumber_message as _format_renumber_message,
+)
+from archledger.cli_formatting import (
     format_schema_message as _format_schema_message,
 )
 from archledger.cli_formatting import (
@@ -91,6 +94,9 @@ from archledger.cli_payloads import (
     read_payload as _read_payload,
 )
 from archledger.cli_payloads import (
+    renumber_payload as _renumber_payload,
+)
+from archledger.cli_payloads import (
     schema_payload as _schema_payload,
 )
 from archledger.cli_payloads import (
@@ -109,9 +115,11 @@ from archledger.cli_payloads import (
     where_payload as _where_payload,
 )
 from archledger.errors import ArchledgerError, StorageError
+from archledger.ids import DEFAULT_ID_PREFIX, DEFAULT_ID_WIDTH
 from archledger.migration import convert_sources
 from archledger.model import ArchitectureRecord
 from archledger.render import build_document
+from archledger.renumber import renumber_project
 from archledger.repository import (
     ArchitectureRepository,
     CheckResult,
@@ -246,6 +254,14 @@ def init(
             help="Canonical source dialect for new project fragments.",
         ),
     ] = "asciidoc",
+    id_prefix: Annotated[
+        str,
+        typer.Option("--id-prefix", help="Ledger ID prefix, e.g. al or ta."),
+    ] = DEFAULT_ID_PREFIX,
+    id_width: Annotated[
+        int,
+        typer.Option("--id-width", help="Minimum ledger ID digit width."),
+    ] = DEFAULT_ID_WIDTH,
     # Build options
     build_default_format: Annotated[
         str | None,
@@ -407,6 +423,8 @@ def init(
             workspace_root,
             archledger_dir=archledger_dir,
             source_format=source_format,
+            id_prefix=id_prefix,
+            id_width=id_width,
             project_name=project_name,
             project_uuid=project_uuid,
             build_default_format=build_default_format,
@@ -748,16 +766,71 @@ def doctor(
         paths: ProjectPaths,
         config: ProjectConfig,
     ) -> dict[str, object]:
-        del paths, config
+        del paths
         result = repo.doctor(repair=repair)
         if result.errors:
             raise ArchledgerError(
                 f"Doctor found {len(result.errors)} error(s).",
-                details=_doctor_payload(result),
+                details=_doctor_payload(
+                    result,
+                    id_prefix=config.id_prefix,
+                    id_width=config.id_width,
+                ),
             )
-        return _doctor_payload(result)
+        return _doctor_payload(
+            result,
+            id_prefix=config.id_prefix,
+            id_width=config.id_width,
+        )
 
     _run_configured_command(state, "doctor", build_result, _format_doctor_message)
+
+
+@app.command("renumber")
+def renumber(
+    ctx: typer.Context,
+    prefix: Annotated[str, typer.Option("--prefix", help="New ledger ID prefix.")],
+    width: Annotated[int, typer.Option("--width", help="New ledger ID digit width.")],
+    apply: Annotated[
+        bool,
+        typer.Option("--apply", help="Apply the renumbering plan."),
+    ] = False,
+) -> None:
+    state = _state(ctx)
+
+    def build_result(
+        repo: ArchitectureRepository,
+        paths: ProjectPaths,
+        config: ProjectConfig,
+    ) -> dict[str, object]:
+        doctor_result = repo.doctor(repair=False)
+        if doctor_result.errors:
+            raise ArchledgerError(
+                (
+                    "Ledger numbering is inconsistent."
+                    " Run archledger doctor --repair first."
+                ),
+                details=_doctor_payload(
+                    doctor_result,
+                    id_prefix=config.id_prefix,
+                    id_width=config.id_width,
+                ),
+            )
+        result = renumber_project(
+            paths,
+            config,
+            new_prefix=prefix,
+            new_width=width,
+            apply=apply,
+        )
+        return _renumber_payload(result)
+
+    _run_configured_command(
+        state,
+        "renumber",
+        build_result,
+        _format_renumber_message,
+    )
 
 
 @source_app.command("snapshot")

@@ -4,6 +4,7 @@ import re
 from dataclasses import dataclass, field
 
 from archledger.errors import ConfigError
+from archledger.ids import DEFAULT_ID_PREFIX, DEFAULT_ID_WIDTH, LedgerIdFormat
 from archledger.model import CURRENT_SOURCE_SCHEMA_VERSION
 
 # --- Public allowed-value constants ---
@@ -93,6 +94,12 @@ class SkillConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class IdConfig:
+    prefix: str
+    width: int
+
+
+@dataclass(frozen=True, slots=True)
 class TrackingConfig:
     enabled: bool
     state_file: str
@@ -119,6 +126,8 @@ class ProjectConfig:
     archledger_dir: str
     project_uuid: str
     project_name: str
+    id_prefix: str = DEFAULT_ID_PREFIX
+    id_width: int = DEFAULT_ID_WIDTH
     source_format: str = "markdown"
     source_schema_version: int = CURRENT_SOURCE_SCHEMA_VERSION
     front_matter: str = "yaml"
@@ -199,6 +208,14 @@ class ProjectConfig:
             installed=self.skill_installed,
             path=self.skill_path,
         )
+
+    @property
+    def ids(self) -> IdConfig:
+        return IdConfig(prefix=self.id_prefix, width=self.id_width)
+
+    @property
+    def id_format(self) -> LedgerIdFormat:
+        return LedgerIdFormat(prefix=self.id_prefix, width=self.id_width)
 
     @property
     def tracking(self) -> TrackingConfig:

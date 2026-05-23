@@ -5,6 +5,7 @@ from archledger.config import (
     BuildConfig,
     BuildOutputConfig,
     DiagramConfig,
+    IdConfig,
     ProjectConfig,
     SkillConfig,
     SourceConfig,
@@ -15,6 +16,7 @@ from archledger.config import (
     render_default_config,
     render_project_config,
 )
+from archledger.ids import DEFAULT_ID_PREFIX, DEFAULT_ID_WIDTH, LedgerIdFormat
 
 __all__ = [
     "Arc42Config",
@@ -23,10 +25,14 @@ __all__ = [
     "DiagramConfig",
     "DEFAULT_TRACKING_EXCLUDE",
     "DEFAULT_TRACKING_INCLUDE",
+    "DEFAULT_ID_PREFIX",
+    "DEFAULT_ID_WIDTH",
     "ProjectConfig",
+    "IdConfig",
     "SkillConfig",
     "SourceConfig",
     "TrackingConfig",
+    "LedgerIdFormat",
     "build_default_project_config",
     "load_project_config",
     "normalize_project_name",
