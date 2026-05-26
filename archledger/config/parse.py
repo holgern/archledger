@@ -3,7 +3,6 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 from typing import cast
-from uuid import UUID
 
 from archledger.config.model import (
     DEFAULT_ID_SEGMENT,
@@ -18,7 +17,9 @@ from archledger.config.model import (
     VALID_TRACKING_SCANNERS,
     ProjectConfig,
     normalize_project_name,
+    validate_uuid,
 )
+from archledger.config.schema import FieldSpec, TableSpec, parse_table_from_spec
 from archledger.errors import ConfigError
 from archledger.ids import (
     DEFAULT_ID_PREFIX,
@@ -112,6 +113,52 @@ _ALLOWED_TRACKING_HASH_ALGORITHMS = VALID_TRACKING_HASH_ALGORITHMS
 _ALLOWED_DIAGRAM_RENDERERS = VALID_DIAGRAM_RENDERERS
 _ALLOWED_DIAGRAM_TYPES = VALID_DIAGRAM_TYPES
 _ALLOWED_DIAGRAM_IMAGE_FORMATS = VALID_DIAGRAM_IMAGE_FORMATS
+
+
+# --- Schema-driven table specs ---
+
+
+def _parse_tracking_enabled(raw: object, field_name: str) -> bool:
+    return _require_bool(raw, field_name)
+
+
+def _parse_tracking_state_file(raw: object, field_name: str) -> str:
+    return _require_non_empty_string(raw, field_name)
+
+
+def _parse_tracking_scanner(raw: object, field_name: str) -> str:
+    return _require_choice(raw, field_name, _ALLOWED_TRACKING_SCANNERS)
+
+
+def _parse_tracking_include(raw: object, field_name: str) -> tuple[str, ...]:
+    return _require_string_tuple(raw, field_name)
+
+
+def _parse_tracking_exclude(raw: object, field_name: str) -> tuple[str, ...]:
+    return _require_string_tuple(raw, field_name)
+
+
+def _parse_tracking_max_file_bytes(raw: object, field_name: str) -> int:
+    return _require_positive_int(raw, field_name)
+
+
+def _parse_tracking_hash_algorithm(raw: object, field_name: str) -> str:
+    return _require_choice(raw, field_name, _ALLOWED_TRACKING_HASH_ALGORITHMS)
+
+
+_TRACKING_TABLE = TableSpec(
+    name="tracking",
+    fields=(
+        FieldSpec("enabled", True, _parse_tracking_enabled),
+        FieldSpec("state_file", "source-state.json", _parse_tracking_state_file),
+        FieldSpec("scanner", "auto", _parse_tracking_scanner),
+        FieldSpec("include", DEFAULT_TRACKING_INCLUDE, _parse_tracking_include),
+        FieldSpec("exclude", DEFAULT_TRACKING_EXCLUDE, _parse_tracking_exclude),
+        FieldSpec("max_file_bytes", 1_000_000, _parse_tracking_max_file_bytes),
+        FieldSpec("hash_algorithm", "sha256", _parse_tracking_hash_algorithm),
+    ),
+    factory=lambda _e, _sf, _sc, _i, _x, _mfb, _ha: (_e, _sf, _sc, _i, _x, _mfb, _ha),
+)
 
 
 def load_project_config(path: Path) -> ProjectConfig:
@@ -237,7 +284,7 @@ def load_project_config(path: Path) -> ProjectConfig:
     return ProjectConfig(
         config_version=cast(int, config_version),
         archledger_dir=archledger_dir,
-        project_uuid=_validate_uuid(project_uuid),
+        project_uuid=validate_uuid(project_uuid),
         project_name=normalize_project_name(project_name),
         id_prefix=id_prefix,
         id_width=id_width,
@@ -487,9 +534,10 @@ def _parse_build_config(
         build_data.get("keep_intermediate", False),
         "build.keep_intermediate",
     )
-    converter = _require_converter(
+    converter = _require_choice(
         build_data.get("converter", "auto"),
         "build.converter",
+        _ALLOWED_BUILD_CONVERTERS,
     )
     pdf_engine = _require_optional_string(
         build_data.get("pdf_engine", ""),
@@ -555,45 +603,8 @@ def _parse_skill_config(skill_data: dict[str, object]) -> tuple[bool, str]:
 def _parse_tracking_config(
     tracking_data: dict[str, object],
 ) -> tuple[bool, str, str, tuple[str, ...], tuple[str, ...], int, str]:
-    tracking_enabled = _require_bool(
-        tracking_data.get("enabled", True),
-        "tracking.enabled",
-    )
-    tracking_state_file = _require_non_empty_string(
-        tracking_data.get("state_file", "source-state.json"),
-        "tracking.state_file",
-    )
-    tracking_scanner = _require_choice(
-        tracking_data.get("scanner", "auto"),
-        "tracking.scanner",
-        _ALLOWED_TRACKING_SCANNERS,
-    )
-    tracking_include = _require_string_tuple(
-        tracking_data.get("include", DEFAULT_TRACKING_INCLUDE),
-        "tracking.include",
-    )
-    tracking_exclude = _require_string_tuple(
-        tracking_data.get("exclude", DEFAULT_TRACKING_EXCLUDE),
-        "tracking.exclude",
-    )
-    tracking_max_file_bytes = _require_positive_int(
-        tracking_data.get("max_file_bytes", 1_000_000),
-        "tracking.max_file_bytes",
-    )
-    tracking_hash_algorithm = _require_choice(
-        tracking_data.get("hash_algorithm", "sha256"),
-        "tracking.hash_algorithm",
-        _ALLOWED_TRACKING_HASH_ALGORITHMS,
-    )
-    return (
-        tracking_enabled,
-        tracking_state_file,
-        tracking_scanner,
-        tracking_include,
-        tracking_exclude,
-        tracking_max_file_bytes,
-        tracking_hash_algorithm,
-    )
+    parsed = parse_table_from_spec(tracking_data, _TRACKING_TABLE)
+    return _TRACKING_TABLE.factory(**parsed)
 
 
 def _parse_diagram_config(
@@ -667,19 +678,6 @@ def _require_optional_string(value: object, field_name: str) -> str:
     return value.strip()
 
 
-def _require_converter(value: object, field_name: str) -> str:
-    if not isinstance(value, str):
-        raise ConfigError(f"{field_name} must be a string.")
-    normalized = value.strip().lower()
-    if normalized not in _ALLOWED_BUILD_CONVERTERS:
-        raise ConfigError(
-            f"{field_name} must be one of: "
-            + ", ".join(sorted(_ALLOWED_BUILD_CONVERTERS))
-            + "."
-        )
-    return normalized
-
-
 def _require_choice(value: object, field_name: str, allowed: frozenset[str]) -> str:
     if not isinstance(value, str):
         raise ConfigError(f"{field_name} must be a string.")
@@ -733,9 +731,10 @@ def _normalize_build_outputs(value: dict[str, object]) -> dict[str, dict[str, ob
             )
         tool = raw_config.get("tool")
         if tool is not None:
-            output_config["tool"] = _require_converter(
+            output_config["tool"] = _require_choice(
                 tool,
                 f"build.outputs.{normalized_name}.tool",
+                _ALLOWED_BUILD_CONVERTERS,
             )
         pdf_engine = raw_config.get("pdf_engine")
         if pdf_engine is not None:
@@ -751,10 +750,3 @@ def _normalize_build_outputs(value: dict[str, object]) -> dict[str, dict[str, ob
             )
         normalized[normalized_name] = output_config
     return normalized
-
-
-def _validate_uuid(value: str) -> str:
-    try:
-        return str(UUID(value))
-    except ValueError as exc:
-        raise ConfigError("project_uuid must be a valid UUID.") from exc

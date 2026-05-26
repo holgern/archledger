@@ -16,6 +16,7 @@ from archledger.model import (
 )
 from archledger.storage.common import utc_now_iso
 from archledger.storage.paths import ProjectPaths
+from archledger.storage.paths import is_relative_to as _is_relative_to
 from archledger.storage.project_config import ProjectConfig
 
 SOURCE_STATE_SCHEMA = "archledger.source-state.v2"
@@ -401,14 +402,6 @@ def _matches_pattern(path: str, pattern: str) -> bool:
         prefix = pattern[:-3].rstrip("/")
         return path == prefix or path.startswith(f"{prefix}/")
     return fnmatch(path, pattern)
-
-
-def _is_relative_to(path: Path, parent: Path) -> bool:
-    try:
-        path.relative_to(parent)
-    except ValueError:
-        return False
-    return True
 
 
 def _scanner_used(state: SourceState) -> str:

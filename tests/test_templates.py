@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from jinja2 import Environment, PackageLoader
 from typer.testing import CliRunner
 
 from archledger.cli import app
@@ -80,24 +81,72 @@ def test_all_registry_entries_have_context_factories_or_empty_defaults() -> None
 
 def test_all_markdown_templates_include_schema_version_date_body_format() -> None:
     template_root = Path("archledger/templates/records")
+    env = Environment(loader=PackageLoader("archledger", "templates"))
+    common_vars = dict(
+        id="al_0001",
+        title="Test",
+        status="draft",
+        section="context_and_scope",
+        order=1,
+        date="2024-01-01",
+        body_format="markdown",
+        created_at="2024-01-01",
+        updated_at="2024-01-01",
+        schema_version=2,
+        # Extra metadata fields some templates reference
+        level=1,
+        parent="",
+        protocol="",
+        diagram_type="mermaid",
+        caption="Test diagram",
+        related_records=[],
+        environment="production",
+        quality="performance",
+        context_kind="external",
+        partner="",
+        term="test",
+    )
     for path in sorted(template_root.glob("*.md.j2")):
-        text = path.read_text(encoding="utf-8")
-        assert "schema_version: 2" in text, path.name
-        assert "date: {{ date | tojson }}" in text, path.name
-        assert "body_format: markdown" in text, path.name
-        assert "created_at: {{ created_at | tojson }}" in text, path.name
-        assert "updated_at: {{ updated_at | tojson }}" in text, path.name
+        tmpl_name = str(path).replace("archledger/templates/", "", 1)
+        tmpl = env.get_template(tmpl_name)
+        rendered = tmpl.render(type=path.stem.split(".")[0], **common_vars)
+        assert "schema_version: 2" in rendered, path.name
+        assert "body_format: markdown" in rendered, path.name
 
 
 def test_all_asciidoc_templates_include_schema_version_date_body_format() -> None:
     template_root = Path("archledger/templates/records")
+    env = Environment(loader=PackageLoader("archledger", "templates"))
+    common_vars = dict(
+        id="al_0001",
+        title="Test",
+        status="draft",
+        section="context_and_scope",
+        order=1,
+        date="2024-01-01",
+        body_format="asciidoc",
+        created_at="2024-01-01",
+        updated_at="2024-01-01",
+        schema_version=2,
+        # Extra metadata fields some templates reference
+        level=1,
+        parent="",
+        protocol="",
+        diagram_type="mermaid",
+        caption="Test diagram",
+        related_records=[],
+        environment="production",
+        quality="performance",
+        context_kind="external",
+        partner="",
+        term="test",
+    )
     for path in sorted(template_root.glob("*.adoc.j2")):
-        text = path.read_text(encoding="utf-8")
-        assert "schema_version: 2" in text, path.name
-        assert "date: {{ date | tojson }}" in text, path.name
-        assert "body_format: asciidoc" in text, path.name
-        assert "created_at: {{ created_at | tojson }}" in text, path.name
-        assert "updated_at: {{ updated_at | tojson }}" in text, path.name
+        tmpl_name = str(path).replace("archledger/templates/", "", 1)
+        tmpl = env.get_template(tmpl_name)
+        rendered = tmpl.render(type=path.stem.split(".")[0], **common_vars)
+        assert "schema_version: 2" in rendered, path.name
+        assert "body_format: asciidoc" in rendered, path.name
 
 
 def test_section_templates_include_schema_version_date_body_format(

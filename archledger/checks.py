@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
+from dataclasses import dataclass
 
 from archledger.model import PLACEHOLDER_SNIPPETS, ArchitectureRecord
 
@@ -52,6 +53,87 @@ _ASCIIDOC_BLOCK_PATTERNS: dict[str, re.Pattern[str]] = {
         re.IGNORECASE | re.DOTALL | re.MULTILINE,
     ),
 }
+
+
+# --- Diagram syntax registry ---
+
+
+@dataclass(frozen=True, slots=True)
+class DiagramSyntax:
+    """Describes the syntax and validation rules for one diagram type in one dialect."""
+
+    diagram_type: str
+    body_format: str  # "markdown" or "asciidoc"
+    block_pattern: re.Pattern[str] | None
+    label: str  # Human-readable block name for error messages
+    enforce_line_width: bool = False
+
+
+DIAGRAM_SYNTAX_REGISTRY: list[DiagramSyntax] = [
+    # Markdown patterns
+    DiagramSyntax(
+        "mermaid", "markdown", _MARKDOWN_BLOCK_PATTERNS.get("mermaid"), "fenced mermaid"
+    ),
+    DiagramSyntax(
+        "svgbob", "markdown", _MARKDOWN_BLOCK_PATTERNS.get("svgbob"), "fenced svgbob"
+    ),
+    DiagramSyntax(
+        "text",
+        "markdown",
+        _MARKDOWN_BLOCK_PATTERNS.get("text"),
+        "fenced text",
+        enforce_line_width=True,
+    ),
+    DiagramSyntax(
+        "ascii",
+        "markdown",
+        _MARKDOWN_BLOCK_PATTERNS.get("ascii"),
+        "fenced ascii",
+        enforce_line_width=True,
+    ),
+    DiagramSyntax(
+        "unicode",
+        "markdown",
+        _MARKDOWN_BLOCK_PATTERNS.get("unicode"),
+        "fenced text",
+        enforce_line_width=True,
+    ),
+    # AsciiDoc patterns
+    DiagramSyntax(
+        "mermaid", "asciidoc", _ASCIIDOC_BLOCK_PATTERNS.get("mermaid"), "[mermaid]"
+    ),
+    DiagramSyntax(
+        "svgbob", "asciidoc", _ASCIIDOC_BLOCK_PATTERNS.get("svgbob"), "[svgbob]"
+    ),
+    DiagramSyntax(
+        "text",
+        "asciidoc",
+        _ASCIIDOC_BLOCK_PATTERNS.get("text"),
+        "text block",
+        enforce_line_width=True,
+    ),
+    DiagramSyntax(
+        "ascii",
+        "asciidoc",
+        _ASCIIDOC_BLOCK_PATTERNS.get("ascii"),
+        "text block",
+        enforce_line_width=True,
+    ),
+    DiagramSyntax(
+        "unicode",
+        "asciidoc",
+        _ASCIIDOC_BLOCK_PATTERNS.get("unicode"),
+        "text block",
+        enforce_line_width=True,
+    ),
+]
+
+
+def _diagram_syntax_for(diagram_type: str, body_format: str) -> DiagramSyntax | None:
+    for syntax in DIAGRAM_SYNTAX_REGISTRY:
+        if syntax.diagram_type == diagram_type and syntax.body_format == body_format:
+            return syntax
+    return None
 
 
 def content_warnings(record: ArchitectureRecord) -> list[str]:
@@ -272,21 +354,33 @@ def _diagram_warnings(record: ArchitectureRecord) -> list[str]:
 def _markdown_diagram_warnings(
     record: ArchitectureRecord, diagram_type: str
 ) -> list[str]:
+    syntax = _diagram_syntax_for(diagram_type, "markdown")
+    if syntax is None or syntax.block_pattern is None:
+        return []
+    return _validate_diagram_syntax(record, syntax)
+
+
+def _validate_diagram_syntax(
+    record: ArchitectureRecord, syntax: DiagramSyntax
+) -> list[str]:
+    """Validate a diagram block using a DiagramSyntax spec."""
     warnings: list[str] = []
-    pattern = _MARKDOWN_BLOCK_PATTERNS.get(diagram_type)
-    if pattern is None:
+    if syntax.block_pattern is None:
         return warnings
-    match = pattern.search(record.body)
+    match = syntax.block_pattern.search(record.body)
     if not match:
         warnings.append(
-            f"Diagram {record.id} markdown body is missing a fenced "
-            f"{diagram_type} block."
+            f"Diagram {record.id} {syntax.body_format} body is missing a "
+            f"{syntax.label} block."
         )
     else:
-        block_content = match.group(1) or ""
+        groups = [g for g in match.groups() if g is not None]
+        block_content = groups[0] if groups else ""
         if not block_content.strip():
-            warnings.append(f"Diagram {record.id} {diagram_type} block is empty.")
-        elif diagram_type in _TEXT_DIAGRAM_TYPES:
+            warnings.append(
+                f"Diagram {record.id} {syntax.diagram_type} block is empty."
+            )
+        elif syntax.enforce_line_width:
             for line in block_content.splitlines():
                 if len(line) > _MAX_TEXT_DIAGRAM_LINE_LENGTH:
                     warnings.append(

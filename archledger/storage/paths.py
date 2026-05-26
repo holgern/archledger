@@ -15,6 +15,19 @@ PROJECT_CONFIG_FILENAMES = (
 DEFAULT_ARCHLEDGER_DIR_NAME = ".archledger"
 
 
+def is_relative_to(path: Path, parent: Path) -> bool:
+    """Check whether *path* is inside *parent*.
+
+    Wrapper around ``Path.relative_to`` that returns ``bool`` instead of
+    raising.  Centralises the compatibility/normalisation policy.
+    """
+    try:
+        path.relative_to(parent)
+    except ValueError:
+        return False
+    return True
+
+
 @dataclass(frozen=True, slots=True)
 class ProjectPaths:
     workspace_root: Path

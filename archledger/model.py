@@ -79,6 +79,25 @@ EMPTY_SECTION_PLACEHOLDERS = {
     "asciidoc": "// archledger: no accepted records for this section yet",
 }
 
+
+def known_source_extensions(
+    config: object,
+) -> tuple[str, ...]:
+    """Return sorted tuple of all recognised source file extensions."""
+    from archledger.config.model import ProjectConfig
+
+    assert isinstance(config, ProjectConfig)
+    return tuple(
+        sorted(
+            {
+                *SOURCE_FORMAT_EXTENSIONS.values(),
+                config.section_extension,
+                config.record_extension,
+            }
+        )
+    )
+
+
 RECORD_TYPES = _RECORD_TYPES
 CLI_KIND_ALIASES = _CLI_KIND_ALIASES
 RECORD_TYPE_TO_DEFAULT_SECTION = _RECORD_TYPE_TO_DEFAULT_SECTION
@@ -259,7 +278,52 @@ def validate_record(
     return issues
 
 
+@dataclass(frozen=True, slots=True)
+class SourceFormatSpec:
+    """All per-format attributes for a source format."""
+
+    extension: str
+    native_output: str
+    section_body_placeholder: str
+    empty_section_placeholder: str
+
+
+SOURCE_FORMAT_SPECS: dict[str, SourceFormatSpec] = {
+    "markdown": SourceFormatSpec(
+        extension=".md",
+        native_output="markdown",
+        section_body_placeholder="<!-- archledger: add section-level prose here -->",
+        empty_section_placeholder=(
+            "<!-- archledger: no accepted records for this section yet -->"
+        ),
+    ),
+    "asciidoc": SourceFormatSpec(
+        extension=".adoc",
+        native_output="asciidoc",
+        section_body_placeholder="// archledger: add section-level prose here",
+        empty_section_placeholder=(
+            "// archledger: no accepted records for this section yet"
+        ),
+    ),
+}
+
+
+def _lookup_source_format(
+    specs: dict[str, SourceFormatSpec], source_format: str
+) -> SourceFormatSpec:
+    try:
+        return specs[source_format]
+    except KeyError as exc:
+        raise ValueError(f"Unsupported source format: {source_format}") from exc
+
+
+def source_format_spec(source_format: str) -> SourceFormatSpec:
+    """Return the full spec for a source format."""
+    return _lookup_source_format(SOURCE_FORMAT_SPECS, source_format)
+
+
 def default_extension_for_source_format(source_format: str) -> str:
+    return source_format_spec(source_format).extension
     try:
         return SOURCE_FORMAT_EXTENSIONS[source_format]
     except KeyError as exc:
@@ -267,10 +331,7 @@ def default_extension_for_source_format(source_format: str) -> str:
 
 
 def native_output_format_for_source_format(source_format: str) -> str:
-    try:
-        return SOURCE_FORMAT_NATIVE_OUTPUTS[source_format]
-    except KeyError as exc:
-        raise ValueError(f"Unsupported source format: {source_format}") from exc
+    return source_format_spec(source_format).native_output
 
 
 def infer_output_format_from_path(path: str | Path) -> str | None:
@@ -309,17 +370,11 @@ def record_template_name_for_source_format(
 
 
 def section_body_placeholder_for_source_format(source_format: str) -> str:
-    try:
-        return SECTION_BODY_PLACEHOLDERS[source_format]
-    except KeyError as exc:
-        raise ValueError(f"Unsupported source format: {source_format}") from exc
+    return source_format_spec(source_format).section_body_placeholder
 
 
 def empty_section_placeholder_for_source_format(source_format: str) -> str:
-    try:
-        return EMPTY_SECTION_PLACEHOLDERS[source_format]
-    except KeyError as exc:
-        raise ValueError(f"Unsupported source format: {source_format}") from exc
+    return source_format_spec(source_format).empty_section_placeholder
 
 
 def section_filename_for(

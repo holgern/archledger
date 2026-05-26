@@ -416,6 +416,14 @@ def init(
         ),
     ] = None,
 ) -> None:
+    from archledger.cli_options import (
+        InitArc42Options,
+        InitBuildOptions,
+        InitDiagramOptions,
+        InitOptions,
+        InitTrackingOptions,
+    )
+
     state = _state(ctx)
     workspace_root = state.root.resolve()
     config_path = workspace_root / CANONICAL_PROJECT_CONFIG_FILENAME
@@ -426,41 +434,84 @@ def init(
             ArchledgerError(f"Config file already exists: {config_path}"),
         )
     try:
-        config = build_default_project_config(
-            workspace_root,
+        opts = InitOptions(
             archledger_dir=archledger_dir,
+            project_name=project_name,
+            project_uuid=project_uuid,
             source_format=source_format,
             id_prefix=id_prefix,
             id_width=id_width,
             id_segment_mode=id_segment_mode,
-            project_name=project_name,
-            project_uuid=project_uuid,
-            build_default_format=build_default_format,
-            build_default_output=build_default_output,
-            build_default_output_dir=build_default_output_dir,
-            build_include_draft=build_include_draft,
-            build_include_superseded=build_include_superseded,
-            build_strict=build_strict,
-            build_keep_intermediate=build_keep_intermediate,
-            build_converter=build_converter,
-            build_pdf_engine=build_pdf_engine,
-            build_reference_docx=build_reference_docx,
-            diagram_enabled=diagrams,
-            diagram_renderer=diagram_renderer,
-            diagram_default_type=diagram_default_type,
-            diagram_output_dir=diagram_output_dir,
-            diagram_image_format=diagram_image_format,
-            diagram_kroki_url=diagram_kroki_url,
-            arc42_title=arc42_title,
-            arc42_language=arc42_language,
-            arc42_template_version=arc42_template_version,
-            arc42_include_help=arc42_include_help,
-            tracking_enabled=tracking,
-            tracking_scanner=tracking_scanner,
-            tracking_state_file=tracking_state_file,
-            tracking_max_file_bytes=tracking_max_file_bytes,
-            tracking_include=tuple(tracking_include) if tracking_include else None,
-            tracking_exclude=tuple(tracking_exclude) if tracking_exclude else None,
+            build=InitBuildOptions(
+                default_format=build_default_format,
+                default_output=build_default_output,
+                default_output_dir=build_default_output_dir,
+                include_draft=build_include_draft,
+                include_superseded=build_include_superseded,
+                strict=build_strict,
+                keep_intermediate=build_keep_intermediate,
+                converter=build_converter,
+                pdf_engine=build_pdf_engine,
+                reference_docx=build_reference_docx,
+            ),
+            diagrams=InitDiagramOptions(
+                enabled=diagrams,
+                renderer=diagram_renderer,
+                default_type=diagram_default_type,
+                output_dir=diagram_output_dir,
+                image_format=diagram_image_format,
+                kroki_url=diagram_kroki_url,
+            ),
+            arc42=InitArc42Options(
+                title=arc42_title,
+                language=arc42_language,
+                template_version=arc42_template_version,
+                include_help=arc42_include_help,
+            ),
+            tracking=InitTrackingOptions(
+                enabled=tracking,
+                scanner=tracking_scanner,
+                state_file=tracking_state_file,
+                max_file_bytes=tracking_max_file_bytes,
+                include=tuple(tracking_include) if tracking_include else (),
+                exclude=tuple(tracking_exclude) if tracking_exclude else (),
+            ),
+        )
+        config = build_default_project_config(
+            workspace_root,
+            archledger_dir=opts.archledger_dir,
+            source_format=opts.source_format,
+            id_prefix=opts.id_prefix,
+            id_width=opts.id_width,
+            id_segment_mode=opts.id_segment_mode,
+            project_name=opts.project_name,
+            project_uuid=opts.project_uuid,
+            build_default_format=opts.build.default_format,
+            build_default_output=opts.build.default_output,
+            build_default_output_dir=opts.build.default_output_dir,
+            build_include_draft=opts.build.include_draft,
+            build_include_superseded=opts.build.include_superseded,
+            build_strict=opts.build.strict,
+            build_keep_intermediate=opts.build.keep_intermediate,
+            build_converter=opts.build.converter,
+            build_pdf_engine=opts.build.pdf_engine,
+            build_reference_docx=opts.build.reference_docx,
+            diagram_enabled=opts.diagrams.enabled,
+            diagram_renderer=opts.diagrams.renderer,
+            diagram_default_type=opts.diagrams.default_type,
+            diagram_output_dir=opts.diagrams.output_dir,
+            diagram_image_format=opts.diagrams.image_format,
+            diagram_kroki_url=opts.diagrams.kroki_url,
+            arc42_title=opts.arc42.title,
+            arc42_language=opts.arc42.language,
+            arc42_template_version=opts.arc42.template_version,
+            arc42_include_help=opts.arc42.include_help,
+            tracking_enabled=opts.tracking.enabled,
+            tracking_scanner=opts.tracking.scanner,
+            tracking_state_file=opts.tracking.state_file,
+            tracking_max_file_bytes=opts.tracking.max_file_bytes,
+            tracking_include=opts.tracking.include or None,
+            tracking_exclude=opts.tracking.exclude or None,
         )
         from archledger.config.render import render_project_config as _render
 
@@ -483,35 +534,17 @@ def init(
 
 @app.command()
 def status(ctx: typer.Context) -> None:
-    state = _state(ctx)
-    _run_configured_command(
-        state,
-        "status",
-        _status_payload,
-        _format_status_message,
-    )
+    _run_simple_command(ctx, "status", _status_payload, _format_status_message)
 
 
 @app.command("paths")
 def paths(ctx: typer.Context) -> None:
-    state = _state(ctx)
-    _run_configured_command(
-        state,
-        "paths",
-        _where_payload,
-        _format_paths_message,
-    )
+    _run_simple_command(ctx, "paths", _where_payload, _format_paths_message)
 
 
 @app.command("schema")
 def schema(ctx: typer.Context) -> None:
-    state = _state(ctx)
-    _run_configured_command(
-        state,
-        "schema",
-        _schema_payload,
-        _format_schema_message,
-    )
+    _run_simple_command(ctx, "schema", _schema_payload, _format_schema_message)
 
 
 @app.command("new")
@@ -589,7 +622,7 @@ def new_record(
 ) -> None:
     state = _state(ctx)
 
-    def build_result(
+    def _build_new_record_result(
         repo: ArchitectureRepository,
         paths: ProjectPaths,
         config: ProjectConfig,
@@ -612,7 +645,7 @@ def new_record(
             )
         )
 
-    _run_configured_command(state, "new", build_result, _format_new_message)
+    _run_configured_command(state, "new", _build_new_record_result, _format_new_message)
 
 
 @app.command()
@@ -622,7 +655,7 @@ def seed(
 ) -> None:
     state = _state(ctx)
 
-    def build_result(
+    def _build_seed_result(
         repo: ArchitectureRepository,
         paths: ProjectPaths,
         config: ProjectConfig,
@@ -633,7 +666,7 @@ def seed(
         records = _seed_arc42_minimal(repo)
         return _seed_payload(preset, records)
 
-    _run_configured_command(state, "seed", build_result, _format_seed_message)
+    _run_configured_command(state, "seed", _build_seed_result, _format_seed_message)
 
 
 @app.command("list")
@@ -651,7 +684,7 @@ def list_records(
         all_statuses=all_statuses,
     )
 
-    def build_result(
+    def _build_list_records_result(
         repo: ArchitectureRepository,
         paths: ProjectPaths,
         config: ProjectConfig,
@@ -665,7 +698,9 @@ def list_records(
             )
         )
 
-    _run_configured_command(state, "list", build_result, _format_list_message)
+    _run_configured_command(
+        state, "list", _build_list_records_result, _format_list_message
+    )
 
 
 @app.command()
@@ -675,7 +710,7 @@ def show(
 ) -> None:
     state = _state(ctx)
 
-    def build_result(
+    def _build_show_result(
         repo: ArchitectureRepository,
         paths: ProjectPaths,
         config: ProjectConfig,
@@ -683,7 +718,7 @@ def show(
         del paths, config
         return _show_payload(repo.get_record(record_id))
 
-    _run_configured_command(state, "show", build_result, _format_show_message)
+    _run_configured_command(state, "show", _build_show_result, _format_show_message)
 
 
 @app.command()
@@ -703,7 +738,7 @@ def read(
         all_statuses=all_statuses,
     )
 
-    def build_result(
+    def _build_read_result(
         repo: ArchitectureRepository,
         paths: ProjectPaths,
         config: ProjectConfig,
@@ -719,7 +754,7 @@ def read(
             kind=kind,
         )
 
-    _run_configured_command(state, "read", build_result, _format_read_message)
+    _run_configured_command(state, "read", _build_read_result, _format_read_message)
 
 
 @app.command()
@@ -729,7 +764,7 @@ def check(
 ) -> None:
     state = _state(ctx)
 
-    def build_result(
+    def _build_check_result(
         repo: ArchitectureRepository,
         paths: ProjectPaths,
         config: ProjectConfig,
@@ -740,7 +775,7 @@ def check(
             raise _check_error(result, strict=strict)
         return _check_payload(result)
 
-    _run_configured_command(state, "check", build_result, _format_check_message)
+    _run_configured_command(state, "check", _build_check_result, _format_check_message)
 
 
 @app.command("archive")
@@ -751,7 +786,7 @@ def archive(
 ) -> None:
     state = _state(ctx)
 
-    def build_result(
+    def _build_archive_result(
         repo: ArchitectureRepository,
         paths: ProjectPaths,
         config: ProjectConfig,
@@ -759,7 +794,9 @@ def archive(
         del paths, config
         return _archive_payload(repo.archive_record(record_id, reason=reason))
 
-    _run_configured_command(state, "archive", build_result, _format_archive_message)
+    _run_configured_command(
+        state, "archive", _build_archive_result, _format_archive_message
+    )
 
 
 @app.command("doctor")
@@ -769,7 +806,7 @@ def doctor(
 ) -> None:
     state = _state(ctx)
 
-    def build_result(
+    def _build_doctor_result(
         repo: ArchitectureRepository,
         paths: ProjectPaths,
         config: ProjectConfig,
@@ -789,7 +826,9 @@ def doctor(
             id_format=config.id_format,
         )
 
-    _run_configured_command(state, "doctor", build_result, _format_doctor_message)
+    _run_configured_command(
+        state, "doctor", _build_doctor_result, _format_doctor_message
+    )
 
 
 @app.command("renumber")
@@ -814,7 +853,7 @@ def renumber(
 ) -> None:
     state = _state(ctx)
 
-    def build_result(
+    def _build_renumber_result(
         repo: ArchitectureRepository,
         paths: ProjectPaths,
         config: ProjectConfig,
@@ -844,7 +883,7 @@ def renumber(
     _run_configured_command(
         state,
         "renumber",
-        build_result,
+        _build_renumber_result,
         _format_renumber_message,
     )
 
@@ -856,7 +895,7 @@ def snapshot(
 ) -> None:
     state = _state(ctx)
 
-    def build_result(
+    def _build_snapshot_result(
         repo: ArchitectureRepository,
         paths: ProjectPaths,
         config: ProjectConfig,
@@ -876,7 +915,7 @@ def snapshot(
     _run_configured_command(
         state,
         "source snapshot",
-        build_result,
+        _build_snapshot_result,
         _format_snapshot_message,
     )
 
@@ -895,7 +934,7 @@ def changed(
         all_statuses=all_statuses,
     )
 
-    def build_result(
+    def _build_changed_result(
         repo: ArchitectureRepository,
         paths: ProjectPaths,
         config: ProjectConfig,
@@ -920,7 +959,7 @@ def changed(
     _run_configured_command(
         state,
         "source changed",
-        build_result,
+        _build_changed_result,
         _format_changed_message,
     )
 
@@ -943,7 +982,7 @@ def build(
         all_statuses=all_statuses,
     )
 
-    def build_result(
+    def _build_build_result(
         repo: ArchitectureRepository,
         paths: ProjectPaths,
         config: ProjectConfig,
@@ -960,7 +999,7 @@ def build(
         )
         return _build_payload(result)
 
-    _run_configured_command(state, "build", build_result, _format_build_message)
+    _run_configured_command(state, "build", _build_build_result, _format_build_message)
 
 
 @source_app.command("convert")
@@ -982,7 +1021,7 @@ def convert_sources_command(
 ) -> None:
     state = _state(ctx)
 
-    def build_result(
+    def _build_convert_sources_command_result(
         repo: ArchitectureRepository,
         paths: ProjectPaths,
         config: ProjectConfig,
@@ -1001,7 +1040,7 @@ def convert_sources_command(
     _run_configured_command(
         state,
         "source convert",
-        build_result,
+        _build_convert_sources_command_result,
         _format_convert_sources_message,
     )
 
@@ -1050,6 +1089,18 @@ def _state(ctx: typer.Context) -> CLIState:
     if not isinstance(state, CLIState):
         raise RuntimeError("CLI state was not initialized.")
     return state
+
+
+def _run_simple_command(
+    ctx: typer.Context,
+    command: str,
+    payload_builder: Callable[
+        [ArchitectureRepository, ProjectPaths, ProjectConfig],
+        dict[str, object],
+    ],
+    human_formatter: Callable[[dict[str, object]], str],
+) -> None:
+    _run_configured_command(_state(ctx), command, payload_builder, human_formatter)
 
 
 def _emit_success(

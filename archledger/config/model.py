@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from uuid import UUID
 
 from archledger.errors import ConfigError
 from archledger.ids import (
@@ -308,3 +309,11 @@ def _build_output_config(value: dict[str, object]) -> BuildOutputConfig:
             reference_docx_value if isinstance(reference_docx_value, str) else ""
         ),
     )
+
+
+def validate_uuid(value: str) -> str:
+    """Validate and normalise a UUID string."""
+    try:
+        return str(UUID(value))
+    except ValueError as exc:
+        raise ConfigError("project_uuid must be a valid UUID.") from exc

@@ -10,7 +10,7 @@ from uuid import uuid4
 from archledger.errors import ValidationError
 from archledger.id_segments import id_segment_for_metadata
 from archledger.ids import LedgerIdFormat
-from archledger.model import SOURCE_FORMAT_EXTENSIONS
+from archledger.model import known_source_extensions
 from archledger.storage.common import ensure_dir, read_text, write_text_atomic
 from archledger.storage.frontmatter import iter_source_files, read_front_matter_document
 from archledger.storage.meta import (
@@ -86,7 +86,7 @@ def renumber_project(
     except ValueError as exc:
         raise ValidationError(str(exc)) from exc
 
-    source_extensions = _known_source_extensions(config)
+    source_extensions = known_source_extensions(config)
     numbered_paths = _collect_numbered_paths(paths, source_extensions, old_format)
     if not numbered_paths:
         raise ValidationError("No source files match the current ledger ID format.")
@@ -145,18 +145,6 @@ def renumber_project(
         config_path=paths.config_path,
         storage_next_number_before=meta_before.next_number,
         storage_next_number_after=next_after,
-    )
-
-
-def _known_source_extensions(config: ProjectConfig) -> tuple[str, ...]:
-    return tuple(
-        sorted(
-            {
-                *SOURCE_FORMAT_EXTENSIONS.values(),
-                config.section_extension,
-                config.record_extension,
-            }
-        )
     )
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from archledger.converters import BuildResult
@@ -39,6 +40,51 @@ from archledger.source_tracking import (
 )
 from archledger.storage.paths import ProjectPaths
 from archledger.storage.project_config import ProjectConfig
+
+# --- Shared payload helpers ---
+
+
+def _record_identity(record: ArchitectureRecord) -> dict[str, object]:
+    """Core identity fields shared by most record payloads."""
+    return {
+        "id": record.id,
+        "type": record.type,
+        "title": record.title,
+        "status": record.status,
+        "section": record.section,
+        "path": str(record.path),
+    }
+
+
+def _record_detail(
+    record: ArchitectureRecord,
+    *,
+    include_body: bool = False,
+    workspace_root: Path | None = None,
+) -> dict[str, object]:
+    """Extended record payload with metadata and optional body."""
+    payload = _record_identity(record)
+    if workspace_root is not None:
+        payload["path"] = display_path(workspace_root, record.path)
+    payload["metadata"] = record.metadata
+    if include_body:
+        payload["body"] = record.body
+    return payload
+
+
+def _findings_payload(
+    errors: Sequence[object],
+    warnings: Sequence[object],
+    *,
+    serializer: Callable[[object], dict[str, object]] | None = None,
+) -> dict[str, object]:
+    """Standard errors/warnings findings payload."""
+    if serializer is not None:
+        return {
+            "errors": [serializer(f) for f in errors],
+            "warnings": [serializer(f) for f in warnings],
+        }
+    return {"errors": list(errors), "warnings": list(warnings)}
 
 
 def init_result_payload(result: InitResult) -> dict[str, object]:
@@ -139,11 +185,7 @@ def schema_payload(
 
 
 def new_record_payload(record: ArchitectureRecord) -> dict[str, object]:
-    return {
-        "id": record.id,
-        "type": record.type,
-        "path": str(record.path),
-    }
+    return {"id": record.id, "type": record.type, "path": str(record.path)}
 
 
 def seed_payload(preset: str, records: list[ArchitectureRecord]) -> dict[str, object]:
@@ -161,32 +203,11 @@ def seed_payload(preset: str, records: list[ArchitectureRecord]) -> dict[str, ob
 
 
 def list_records_payload(records: list[ArchitectureRecord]) -> dict[str, object]:
-    return {
-        "records": [
-            {
-                "id": record.id,
-                "type": record.type,
-                "status": record.status,
-                "section": record.section,
-                "title": record.title,
-                "path": str(record.path),
-            }
-            for record in records
-        ]
-    }
+    return {"records": [_record_identity(r) for r in records]}
 
 
 def show_record_payload(record: ArchitectureRecord) -> dict[str, object]:
-    return {
-        "id": record.id,
-        "type": record.type,
-        "status": record.status,
-        "section": record.section,
-        "title": record.title,
-        "path": str(record.path),
-        "metadata": record.metadata,
-        "body": record.body,
-    }
+    return _record_detail(record, include_body=True)
 
 
 def read_payload(
@@ -341,10 +362,7 @@ def impacted_record_payload(
 
 
 def check_payload(result: CheckResult) -> dict[str, object]:
-    return {
-        "errors": [finding_payload(finding) for finding in result.errors],
-        "warnings": [finding_payload(finding) for finding in result.warnings],
-    }
+    return _findings_payload(result.errors, result.warnings, serializer=finding_payload)
 
 
 def archive_payload(result: ArchiveResult) -> dict[str, object]:
@@ -376,8 +394,7 @@ def doctor_payload(
     )
     return {
         "schema": "archledger.doctor.v1",
-        "errors": [finding_payload(finding) for finding in result.errors],
-        "warnings": [finding_payload(finding) for finding in result.warnings],
+        **_findings_payload(result.errors, result.warnings, serializer=finding_payload),
         "repairs": [
             {
                 "kind": repair.kind,

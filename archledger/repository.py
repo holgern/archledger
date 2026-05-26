@@ -12,6 +12,15 @@ from archledger.checks import content_warnings
 from archledger.errors import StorageError, ValidationError
 from archledger.id_segments import id_segment_for_metadata
 from archledger.ids import validate_id_segment
+from archledger.ledger_sequence import (
+    NumberedSourcePath as _NumberedSourcePath,
+)
+from archledger.ledger_sequence import (
+    analyze_ledger_sequence as _analyze_ledger_sequence,
+)
+from archledger.ledger_sequence import (
+    collect_numbered_source_paths as _collect_numbered_source_paths,
+)
 from archledger.model import (
     CURRENT_SOURCE_SCHEMA_VERSION,
     MAJOR_SECTION_SPECS,
@@ -19,11 +28,11 @@ from archledger.model import (
     RECORD_TYPE_TO_DIR,
     RECORD_TYPES,
     REQUIRED_RECORD_FIELDS,
-    SOURCE_FORMAT_EXTENSIONS,
     VALID_BODY_FORMATS,
     ArchitectureRecord,
     SectionSpec,
     is_visible_status,
+    known_source_extensions,
     normalize_kind,
     record_sort_key,
     record_template_name_for_source_format,
@@ -45,7 +54,7 @@ from archledger.storage.meta import (
     read_storage_meta,
     write_storage_meta,
 )
-from archledger.storage.paths import ProjectPaths
+from archledger.storage.paths import ProjectPaths, is_relative_to
 from archledger.storage.project_config import ProjectConfig
 
 
@@ -115,12 +124,8 @@ class DoctorResult:
     duplicate_numbers: tuple[int, ...]
 
 
-@dataclass(frozen=True, slots=True)
-class NumberedSourcePath:
-    number: int
-    record_id: str
-    path: Path
-    storage_area: str
+# Re-export for backward compatibility
+NumberedSourcePath = _NumberedSourcePath
 
 
 class ArchitectureRepository:
@@ -684,32 +689,12 @@ class ArchitectureRepository:
     def _numbered_source_paths(
         self, *, include_archive: bool
     ) -> list[NumberedSourcePath]:
-        roots: list[tuple[str, Path]] = [
-            ("section", self.paths.sections_dir),
-            ("record", self.paths.records_dir),
-        ]
-        if include_archive:
-            roots.append(("archive", self.paths.archive_dir))
-
-        results: list[NumberedSourcePath] = []
-        for storage_area, root in roots:
-            for path in iter_source_files(
-                root,
-                self._known_source_extensions(),
-            ):
-                try:
-                    number = self.config.id_format.parse(path.stem)
-                except ValueError:
-                    continue
-                results.append(
-                    NumberedSourcePath(
-                        number=number,
-                        record_id=path.stem,
-                        path=path,
-                        storage_area=storage_area,
-                    )
-                )
-        return results
+        return _collect_numbered_source_paths(
+            self.paths,
+            self.config,
+            self._known_source_extensions(),
+            include_archive=include_archive,
+        )
 
     def _ledger_sequence_findings(
         self,
@@ -720,60 +705,23 @@ class ArchitectureRepository:
         tuple[int, ...],
         int,
     ]:
-        meta = read_storage_meta(self.paths.storage_meta_path)
-        numbered_paths = self._numbered_source_paths(include_archive=True)
-        by_number: dict[int, list[NumberedSourcePath]] = {}
-        for item in numbered_paths:
-            by_number.setdefault(item.number, []).append(item)
-
-        highest_seen = max(by_number, default=0)
-        upper_bound = max(highest_seen, meta.next_number - 1)
-        missing_numbers = tuple(
-            number for number in range(1, upper_bound + 1) if number not in by_number
+        result = _analyze_ledger_sequence(
+            self.paths,
+            self.config,
+            self._known_source_extensions(),
+            display_missing_id=self._display_missing_id,
         )
-        duplicate_numbers = tuple(
-            number for number, paths in sorted(by_number.items()) if len(paths) > 1
+        errors = [CheckFinding(level, msg, path) for level, msg, path in result.errors]
+        warnings = [
+            CheckFinding(level, msg, path) for level, msg, path in result.warnings
+        ]
+        return (
+            errors,
+            warnings,
+            result.missing_numbers,
+            result.duplicate_numbers,
+            result.highest_seen,
         )
-
-        errors: list[CheckFinding] = []
-        warnings: list[CheckFinding] = []
-        for number in missing_numbers:
-            errors.append(
-                CheckFinding(
-                    "error",
-                    (
-                        f"Missing ledger ID: {self._display_missing_id(number)}. "
-                        "Move deleted items to archive or run: "
-                        "archledger doctor --repair"
-                    ),
-                    None,
-                )
-            )
-        for number in duplicate_numbers:
-            locations = ", ".join(str(item.path) for item in by_number[number])
-            errors.append(
-                CheckFinding(
-                    "error",
-                    (
-                        f"Duplicate ledger ID {self._display_missing_id(number)} "
-                        f"appears in: {locations}"
-                    ),
-                    None,
-                )
-            )
-        if meta.next_number <= highest_seen:
-            warnings.append(
-                CheckFinding(
-                    "warning",
-                    (
-                        f"storage.yaml next_number is {meta.next_number}, "
-                        f"but filesystem requires at least {highest_seen + 1}. "
-                        "Run: archledger doctor --repair"
-                    ),
-                    self.paths.storage_meta_path,
-                )
-            )
-        return errors, warnings, missing_numbers, duplicate_numbers, highest_seen
 
     def _write_archive_tombstone(self, number: int) -> Path:
         record_id = self.config.id_format.format(
@@ -1057,15 +1005,7 @@ class ArchitectureRepository:
         return errors, warnings
 
     def _known_source_extensions(self) -> tuple[str, ...]:
-        return tuple(
-            sorted(
-                {
-                    *SOURCE_FORMAT_EXTENSIONS.values(),
-                    self.config.section_extension,
-                    self.config.record_extension,
-                }
-            )
-        )
+        return known_source_extensions(self.config)
 
 
 def _section_document(
@@ -1099,8 +1039,4 @@ def _section_document(
 
 
 def path_in_archive(path: Path, archive_dir: Path) -> bool:
-    try:
-        path.relative_to(archive_dir)
-    except ValueError:
-        return False
-    return True
+    return is_relative_to(path, archive_dir)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 from archledger.config.model import (
     DEFAULT_ID_SEGMENT,
@@ -16,7 +16,9 @@ from archledger.config.model import (
     VALID_TRACKING_SCANNERS,
     ProjectConfig,
     normalize_project_name,
+    validate_uuid,
 )
+from archledger.config.schema import TableSpec
 from archledger.errors import ConfigError
 from archledger.ids import (
     DEFAULT_ID_PREFIX,
@@ -113,7 +115,7 @@ def build_default_project_config(
         workspace_root.name if project_name is None else project_name
     )
     normalized_uuid = (
-        str(uuid4()) if project_uuid is None else _validate_uuid(project_uuid)
+        str(uuid4()) if project_uuid is None else validate_uuid(project_uuid)
     )
     return ProjectConfig(
         config_version=7,
@@ -176,6 +178,33 @@ def render_default_config(
         project_uuid=project_uuid,
     )
     return render_project_config(config)
+
+
+def _render_table_from_spec(
+    spec: TableSpec,
+    values: dict[str, object],
+    *,
+    comments: dict[str, str] | None = None,
+) -> list[str]:
+    """Render a TOML table section from a schema spec and field values.
+
+    Only handles simple scalar types (bool, str, int). Complex fields
+    like arrays and sub-tables must be rendered separately.
+    """
+    lines: list[str] = []
+    lines.append(f"[{spec.name}]")
+    for field in spec.fields:
+        value = values.get(field.name, field.default)
+        if comments and field.name in comments:
+            lines.append(comments[field.name])
+        if isinstance(value, bool):
+            lines.append(f"{field.name} = {_toml_bool(value)}")
+        elif isinstance(value, str):
+            lines.append(f"{field.name} = {_toml_string(value)}")
+        elif isinstance(value, int):
+            lines.append(f"{field.name} = {value}")
+        # Skip complex types (tuple, dict) - handled separately
+    return lines
 
 
 def render_project_config(config: ProjectConfig) -> str:
@@ -301,13 +330,6 @@ def _toml_bool(value: bool) -> str:
 
 def _toml_string(value: str) -> str:
     return json.dumps(value)
-
-
-def _validate_uuid(value: str) -> str:
-    try:
-        return str(UUID(value))
-    except ValueError as exc:
-        raise ConfigError("project_uuid must be a valid UUID.") from exc
 
 
 def _validate_enum(value: str, allowed: frozenset[str], field_name: str) -> None:

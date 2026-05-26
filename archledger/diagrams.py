@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import re
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -95,17 +96,19 @@ def materialize_diagrams_for_conversion(
     )
 
 
-def _materialize_markdown_blocks(
+def _materialize_blocks(
     text: str,
     diagram_output_dir: Path,
+    pattern: re.Pattern[str],
     *,
     image_format: str,
     requested_format: OutputFormat,
     tool_resolver: callable | None,
+    replacement_for_asset: Callable[[str], str],
 ) -> tuple[str, tuple[Path, ...]]:
     cleanup_paths: list[Path] = []
     replacements: dict[str, str] = {}
-    for match in _MARKDOWN_MERMAID_BLOCK.finditer(text):
+    for match in pattern.finditer(text):
         source = match.group(1).strip()
         if not source:
             continue
@@ -118,11 +121,30 @@ def _materialize_markdown_blocks(
         )
         cleanup_paths.append(source_path)
         relative_asset = asset_path.relative_to(diagram_output_dir.parent).as_posix()
-        replacements[match.group(0)] = f"![Mermaid diagram]({relative_asset})"
+        replacements[match.group(0)] = replacement_for_asset(relative_asset)
     rewritten = text
     for original, replacement in replacements.items():
         rewritten = rewritten.replace(original, replacement)
     return rewritten, tuple(cleanup_paths)
+
+
+def _materialize_markdown_blocks(
+    text: str,
+    diagram_output_dir: Path,
+    *,
+    image_format: str,
+    requested_format: OutputFormat,
+    tool_resolver: callable | None,
+) -> tuple[str, tuple[Path, ...]]:
+    return _materialize_blocks(
+        text,
+        diagram_output_dir,
+        _MARKDOWN_MERMAID_BLOCK,
+        image_format=image_format,
+        requested_format=requested_format,
+        tool_resolver=tool_resolver,
+        replacement_for_asset=lambda rel: f"![Mermaid diagram]({rel})",
+    )
 
 
 def _materialize_asciidoc_blocks(
@@ -133,26 +155,15 @@ def _materialize_asciidoc_blocks(
     requested_format: OutputFormat,
     tool_resolver: callable | None,
 ) -> tuple[str, tuple[Path, ...]]:
-    cleanup_paths: list[Path] = []
-    replacements: dict[str, str] = {}
-    for match in _ASCIIDOC_MERMAID_BLOCK.finditer(text):
-        source = match.group(1).strip()
-        if not source:
-            continue
-        asset_path, source_path = _render_mermaid_asset(
-            source,
-            diagram_output_dir,
-            image_format=image_format,
-            requested_format=requested_format,
-            tool_resolver=tool_resolver,
-        )
-        cleanup_paths.append(source_path)
-        relative_asset = asset_path.relative_to(diagram_output_dir.parent).as_posix()
-        replacements[match.group(0)] = f"image::{relative_asset}[Mermaid diagram]"
-    rewritten = text
-    for original, replacement in replacements.items():
-        rewritten = rewritten.replace(original, replacement)
-    return rewritten, tuple(cleanup_paths)
+    return _materialize_blocks(
+        text,
+        diagram_output_dir,
+        _ASCIIDOC_MERMAID_BLOCK,
+        image_format=image_format,
+        requested_format=requested_format,
+        tool_resolver=tool_resolver,
+        replacement_for_asset=lambda rel: f"image::{rel}[Mermaid diagram]",
+    )
 
 
 def _render_mermaid_asset(
