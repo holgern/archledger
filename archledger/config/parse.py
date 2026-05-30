@@ -146,6 +146,27 @@ def _parse_tracking_hash_algorithm(raw: object, field_name: str) -> str:
     return _require_choice(raw, field_name, _ALLOWED_TRACKING_HASH_ALGORITHMS)
 
 
+def _make_tracking(
+    enabled,
+    state_file,
+    scanner,
+    include,
+    exclude,
+    max_file_bytes,
+    hash_algorithm,
+) -> tuple:
+    """Factory for the tracking table row."""
+    return (
+        enabled,
+        state_file,
+        scanner,
+        include,
+        exclude,
+        max_file_bytes,
+        hash_algorithm,
+    )
+
+
 _TRACKING_TABLE = TableSpec(
     name="tracking",
     fields=(
@@ -157,7 +178,7 @@ _TRACKING_TABLE = TableSpec(
         FieldSpec("max_file_bytes", 1_000_000, _parse_tracking_max_file_bytes),
         FieldSpec("hash_algorithm", "sha256", _parse_tracking_hash_algorithm),
     ),
-    factory=lambda _e, _sf, _sc, _i, _x, _mfb, _ha: (_e, _sf, _sc, _i, _x, _mfb, _ha),
+    factory=_make_tracking,
 )
 
 

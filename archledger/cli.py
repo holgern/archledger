@@ -253,7 +253,7 @@ def init(
             "--source-format",
             help="Canonical source dialect for new project fragments.",
         ),
-    ] = "asciidoc",
+    ] = "markdown",
     id_prefix: Annotated[
         str,
         typer.Option("--id-prefix", help="Ledger ID prefix, e.g. al or ta."),

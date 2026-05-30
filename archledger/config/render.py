@@ -41,7 +41,7 @@ def build_default_project_config(
     workspace_root: Path,
     *,
     archledger_dir: str,
-    source_format: str = "asciidoc",
+    source_format: str = "markdown",
     id_prefix: str = DEFAULT_ID_PREFIX,
     id_width: int = DEFAULT_ID_WIDTH,
     id_segment_mode: str = DEFAULT_ID_SEGMENT_MODE,
@@ -166,7 +166,7 @@ def render_default_config(
     workspace_root: Path,
     *,
     archledger_dir: str,
-    source_format: str = "asciidoc",
+    source_format: str = "markdown",
     project_name: str | None = None,
     project_uuid: str | None = None,
 ) -> str:
