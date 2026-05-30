@@ -494,5 +494,7 @@ def test_legacy_markdown_project_still_builds_markdown(tmp_path: Path) -> None:
 
 
 def init_project(tmp_path: Path) -> None:
-    result = runner.invoke(app, ["--root", str(tmp_path), "init"])
+    result = runner.invoke(
+        app, ["--root", str(tmp_path), "init", "--source-format", "asciidoc"]
+    )
     assert result.exit_code == 0

@@ -1177,5 +1177,7 @@ def test_doctor_repair_recreates_missing_required_section(tmp_path: Path) -> Non
 
 
 def init_project(tmp_path: Path) -> None:
-    result = runner.invoke(app, ["--root", str(tmp_path), "init"])
+    result = runner.invoke(
+        app, ["--root", str(tmp_path), "init", "--source-format", "asciidoc"]
+    )
     assert result.exit_code == 0
